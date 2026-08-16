@@ -27,7 +27,7 @@ export async function findRepoRoot(cwd: string): Promise<string> {
 }
 
 export async function initializeRepository(root: string, options: InitOptions = {}): Promise<{ root: string; changed: string[]; warnings: string[] }> {
-  const command = options.run ?? runCommand;
+  const command: CommandRunner = options.run ?? ((commandName, args, commandOptions = {}) => runCommand(commandName, args, { ...commandOptions, cwd: commandOptions.cwd ?? root }));
   const github = options.github ?? new GitHubClient(command);
   const repository = await github.repository();
   const config = mergeConfig(defaultConfig(), options.config, repository.defaultBranch);
