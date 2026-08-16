@@ -109,7 +109,7 @@ export async function runDoctor(cwd: string): Promise<{ checks: DoctorCheck[]; o
     const workflowAvailable = await commandAvailable(config.workflowCommand);
     add("codex-workflow CLI", workflowAvailable, config.workflowCommand);
     if (workflowAvailable) {
-      const workflowDoctor = await safeRun(config.workflowCommand, ["doctor"]);
+      const workflowDoctor = await safeRun(config.workflowCommand, ["doctor"], root ? { cwd: `${root}/.factory` } : undefined);
       add("codex-workflow runtime", workflowDoctor.code === 0, trimOutput(workflowDoctor.stderr || workflowDoctor.stdout));
     } else {
       add("codex-workflow runtime", false, "CLI unavailable");
@@ -153,8 +153,8 @@ export function formatRouting(config: FactoryConfig): string {
   }).join("; ");
 }
 
-async function safeRun(command: string, args: string[]) {
-  try { return await runCommand(command, args); } catch (error) { return { code: 1, stdout: "", stderr: errorMessage(error) }; }
+async function safeRun(command: string, args: string[], options?: { cwd?: string }) {
+  try { return await runCommand(command, args, options); } catch (error) { return { code: 1, stdout: "", stderr: errorMessage(error) }; }
 }
 
 async function fileExistsAt(filePath: string): Promise<boolean> {

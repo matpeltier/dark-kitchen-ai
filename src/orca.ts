@@ -21,7 +21,7 @@ export class OrcaClient {
   async listRepos(): Promise<OrcaRepo[]> {
     const result = await this.invoke(["repo", "list", "--json"]);
     if (result.code !== 0) throw commandFailure(result);
-    const raw = parseJsonOutput<unknown>(result.stdout, "orca repo list");
+    const raw = unwrapOrcaResult(parseJsonOutput<unknown>(result.stdout, "orca repo list"));
     const rows = Array.isArray(raw) ? raw : ((raw as { repos?: unknown[] }).repos ?? []);
     return rows.map((item) => {
       const value = item as Record<string, unknown>;
@@ -34,7 +34,7 @@ export class OrcaClient {
     if (existing) return existing;
     const result = await this.invoke(["repo", "add", "--path", repoPath, "--json"]);
     if (result.code !== 0) throw commandFailure(result);
-    const raw = parseJsonOutput<Record<string, unknown>>(result.stdout, "orca repo add");
+    const raw = unwrapOrcaResult(parseJsonOutput<Record<string, unknown>>(result.stdout, "orca repo add"));
     const value = (raw.repo ?? raw) as Record<string, unknown>;
     const repo = { id: String(value.id ?? value.repoId ?? ""), path: repoPath, name: typeof value.name === "string" ? value.name : undefined };
     if (!repo.id) throw new Error("orca repo add returned no repository id");
@@ -44,7 +44,7 @@ export class OrcaClient {
   async createWorktree(repo: OrcaRepo, name: string): Promise<OrcaWorktree> {
     const result = await this.invoke(["worktree", "create", "--repo", `id:${repo.id}`, "--name", name, "--no-parent", "--json"]);
     if (result.code !== 0) throw commandFailure(result);
-    const raw = parseJsonOutput<Record<string, unknown>>(result.stdout, "orca worktree create");
+    const raw = unwrapOrcaResult(parseJsonOutput<Record<string, unknown>>(result.stdout, "orca worktree create"));
     const value = (raw.worktree ?? raw) as Record<string, unknown>;
     const worktree = {
       id: String(value.id ?? ""),
@@ -61,7 +61,7 @@ export class OrcaClient {
   async createTerminal(worktreeId: string, title: string, command: string): Promise<{ handle: string }> {
     const result = await this.invoke(["terminal", "create", "--worktree", `id:${worktreeId}`, "--title", title, "--command", command, "--json"]);
     if (result.code !== 0) throw commandFailure(result);
-    const raw = parseJsonOutput<Record<string, unknown>>(result.stdout, "orca terminal create");
+    const raw = unwrapOrcaResult(parseJsonOutput<Record<string, unknown>>(result.stdout, "orca terminal create"));
     const terminal = raw.terminal as Record<string, unknown> | undefined;
     const handle = String(raw.handle ?? terminal?.handle ?? raw.terminalHandle ?? "");
     if (!handle) throw new Error("orca terminal create returned no terminal handle");
@@ -80,4 +80,11 @@ export class OrcaClient {
     const result = await this.invoke(["worktree", "rm", "--worktree", `id:${worktreeId}`, "--force", "--json"]);
     if (result.code !== 0) throw commandFailure(result);
   }
+}
+
+function unwrapOrcaResult<T>(value: T): T {
+  if (typeof value === "object" && value !== null && "result" in value) {
+    return (value as { result: T }).result;
+  }
+  return value;
 }
