@@ -138,7 +138,14 @@ export class Supervisor {
   }
 
   private workflowCommand(issue: GitHubIssue): string {
-    const args = JSON.stringify({ number: issue.number, title: issue.title, body: issue.body, labels: issue.labels, blockedBy: issue.blockedBy });
+    const args = JSON.stringify({
+      number: issue.number,
+      title: issue.title,
+      body: issue.body,
+      labels: issue.labels,
+      blockedBy: issue.blockedBy,
+      resultPath: this.deps.store.resultPath(issue.number),
+    });
     return [
       this.config.workflowCommand,
       "run", shellQuote(this.config.workflowFile),

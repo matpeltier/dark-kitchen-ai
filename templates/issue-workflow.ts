@@ -16,7 +16,7 @@ const configPath = process.env.FACTORY_CONFIG_PATH ?? path.join(process.cwd(), "
 const factoryConfig = JSON.parse(await readFile(configPath, "utf8")) as { agents: Record<string, string> };
 
 // codex-dynamic-workflows injects agent(), phase(), and args into this script.
-const issue = args as { number: number; title: string; body: string; labels: string[] };
+const issue = args as { number: number; title: string; body: string; labels: string[]; resultPath?: string };
 
 const IMPLEMENTATION_SCHEMA = {
   type: "object", additionalProperties: false,
@@ -58,7 +58,7 @@ function warrantsArchitecture(): boolean {
 }
 
 async function save(result: unknown): Promise<unknown> {
-  const resultPath = path.join(process.cwd(), ".factory", "runtime", String(issue.number), "result.json");
+  const resultPath = issue.resultPath ?? path.join(process.cwd(), ".factory", "runtime", String(issue.number), "result.json");
   await mkdir(path.dirname(resultPath), { recursive: true });
   await writeFile(resultPath, JSON.stringify(result, null, 2) + "\n", "utf8");
   return result;
