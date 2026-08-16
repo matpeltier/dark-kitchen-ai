@@ -35,4 +35,9 @@ describe("GitHub issue graph", () => {
     expect(computeReadyIssues(graph).map((item) => item.number)).toEqual([2]);
     expect(graph.closedNotPlanned[0].message).toContain("closed #1");
   });
+
+  it("does not automatically relaunch a failed issue", () => {
+    const graph = buildIssueGraph([issue(1, "OPEN", ["factory:auto", "factory:failed"])]);
+    expect(computeReadyIssues(graph)).toEqual([]);
+  });
 });

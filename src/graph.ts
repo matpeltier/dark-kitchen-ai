@@ -25,7 +25,7 @@ export function computeReadyIssues(
   if (graph.cycles.length > 0) return [];
   return graph.issues.filter((issue) => {
     if (!isOpen(issue) || !issue.labels.includes("factory:auto")) return false;
-    if (activeIssues.has(issue.number) || issue.labels.includes("factory:needs-human")) return false;
+    if (activeIssues.has(issue.number) || issue.labels.includes("factory:needs-human") || issue.labels.includes("factory:failed")) return false;
     return issue.blockedBy.every((dependency) => {
       const blocker = graph.byNumber.get(dependency.number);
       return Boolean(blocker && isClosed(blocker));
@@ -39,6 +39,7 @@ export function computeBlockedIssues(graph: IssueGraph, activeIssues = new Set<n
     isOpen(issue) &&
     issue.labels.includes("factory:auto") &&
     !issue.labels.includes("factory:needs-human") &&
+    !issue.labels.includes("factory:failed") &&
     !activeIssues.has(issue.number) &&
     !ready.has(issue.number),
   );
