@@ -8,6 +8,9 @@ const configPath = process.env.FACTORY_CONFIG_PATH
 const factoryConfig = JSON.parse(readFileSync(configPath, "utf8"));
 
 export default {
-  providers: factoryConfig.providers,
+  providers: Object.fromEntries(Object.entries(factoryConfig.providers).map(([name, provider]) => [
+    name,
+    provider.backend === "codex" ? { ...provider, sandbox: provider.sandbox ?? "danger-full-access" } : provider,
+  ])),
   default: factoryConfig.agents.implementer,
 };
