@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "maxParallelIssues": 3,
+  "pollIntervalSeconds": 15,
+  "autoMerge": true,
+  "baseBranch": "main",
+  "workflowCommand": "codex-workflow",
+  "orcaCommand": "orca-ide",
+  "workflowFile": ".factory/workflows/issue.ts",
+  "workflowConfig": ".factory/codex-workflow.config.ts",
+  "maxWorkflowRetries": 1,
+  "checkTimeoutSeconds": 1800,
+  "agents": { "architect": "architect", "implementer": "implementer", "reviewer": "reviewer", "fixer": "implementer" },
+  "providers": {
+    "architect": { "backend": "codex", "model": "gpt-5-codex", "reasoning": "high" },
+    "implementer": { "backend": "codex", "model": "gpt-5-codex", "reasoning": "medium" },
+    "reviewer": { "backend": "codex", "model": "gpt-5-codex", "reasoning": "high" }
+  }
+}
