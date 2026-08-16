@@ -10,9 +10,10 @@ export const meta = {
   ],
 };
 
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import factoryConfig from "../config.json" with { type: "json" };
+const configPath = process.env.FACTORY_CONFIG_PATH ?? path.join(process.cwd(), ".factory", "config.json");
+const factoryConfig = JSON.parse(await readFile(configPath, "utf8")) as { agents: Record<string, string> };
 
 // codex-dynamic-workflows injects agent(), phase(), and args into this script.
 const issue = args as { number: number; title: string; body: string; labels: string[] };
