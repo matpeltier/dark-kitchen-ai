@@ -1,0 +1,4 @@
+interface:
+  display_name: "Dark Kitchen Issues"
+  short_description: "Plan GitHub issues and dependency graphs"
+  default_prompt: "Use $dark-kitchen-issues to turn this product discussion into autonomous GitHub issues with dependencies and labels."

@@ -9,6 +9,7 @@ import { buildDashboard, renderDashboard } from "./status.js";
 import { defaultDependencies, Supervisor } from "./supervisor.js";
 import { RuntimeStore } from "./runtime-store.js";
 import { DARK_KITCHEN_LABEL } from "./types.js";
+import { bundledSkillPath, installSkill } from "./skill.js";
 
 const program = new Command();
 program.name("dark-kitchen-ai").alias("dka").description("Keep a GitHub issue dependency graph moving through Orca and codex-dynamic-workflows").version("0.1.0");
@@ -99,6 +100,19 @@ program.command("retry")
     const issue = await dependencies.github.viewIssue(issueNumber);
     if (!issue.labels.includes(DARK_KITCHEN_LABEL.auto)) throw new Error(`Issue #${issueNumber} is not marked ${DARK_KITCHEN_LABEL.auto}`);
     await supervisor.retry(issueNumber);
+  });
+
+const skill = program.command("skill").description("Install the Dark Kitchen Issues skill for ChatGPT/Codex planning");
+skill.command("path")
+  .description("Print the bundled skill directory")
+  .action(() => console.log(bundledSkillPath()));
+skill.command("install")
+  .argument("[destination]", "destination directory (default: ./skills/dark-kitchen-issues)")
+  .option("--global", "install into ~/.codex/skills/dark-kitchen-issues")
+  .option("--force", "replace an existing destination")
+  .action(async (destination: string | undefined, options: { global?: boolean; force?: boolean }) => {
+    const target = await installSkill(destination, options);
+    console.log(`Installed Dark Kitchen Issues skill at ${target}`);
   });
 
 async function printDoctor(cwd: string): Promise<void> {

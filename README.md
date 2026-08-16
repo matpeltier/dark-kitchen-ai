@@ -71,6 +71,24 @@ npx dark-kitchen-ai doctor
 
 `init` only adds missing generated files and a managed section to `AGENTS.md`; unrelated project instructions are preserved.
 
+### Install the planning skill
+
+The repository and npm package include `skills/dark-kitchen-issues/`, a portable `SKILL.md` that teaches ChatGPT/Codex how to plan issues, use the four labels, create native dependency edges, avoid cycles, and resume human-blocked work.
+
+Install it in the current project:
+
+```bash
+npx dark-kitchen-ai skill install
+```
+
+Install it in the local Codex skill directory:
+
+```bash
+npx dark-kitchen-ai skill install --global
+```
+
+Or download/copy the folder directly from [`skills/dark-kitchen-issues`](skills/dark-kitchen-issues). The command is intentionally safe: an existing destination is not replaced unless `--force` is provided.
+
 ## Daily workflow
 
 1. Discuss the product and acceptance criteria with ChatGPT.
