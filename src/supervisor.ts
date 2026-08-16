@@ -5,6 +5,7 @@ import { notify } from "./notifications.js";
 import { OrcaClient } from "./orca.js";
 import { RuntimeStore } from "./runtime-store.js";
 import { shellQuote, slugify } from "./utils.js";
+import { DARK_KITCHEN_LABEL } from "./types.js";
 import type { CommandRunner, FactoryConfig, GitHubIssue, OrcaWorktree, RuntimeRecord, WorkerResult } from "./types.js";
 
 export type GitHubPort = Pick<GitHubClient, "listIssues" | "viewIssue" | "addLabel" | "removeLabel" | "editLabels" | "comment" | "closeIssue" | "createPullRequest" | "waitForChecks" | "mergePullRequest" | "issueIsClosed">;
@@ -63,10 +64,10 @@ export class Supervisor {
       const issue = await this.deps.github.viewIssue(issueNumber);
       const records = await this.deps.store.list();
       const record = records.find((item) => item.issueNumber === issueNumber);
-      if (issue.labels.includes("factory:running") || record?.status === "running" || record?.status === "pr_open") {
-        throw new Error(`Issue #${issueNumber} already has an active Factory run`);
+      if (issue.labels.includes(DARK_KITCHEN_LABEL.running) || record?.status === "running" || record?.status === "pr_open") {
+        throw new Error(`Issue #${issueNumber} already has an active Dark Kitchen AI run`);
       }
-      await this.deps.github.editLabels(issueNumber, [], ["factory:failed", "factory:needs-human"]);
+      await this.deps.github.editLabels(issueNumber, [], [DARK_KITCHEN_LABEL.failed, DARK_KITCHEN_LABEL.needsHuman]);
       await this.startIssue(issue, record);
     } finally {
       await release();
@@ -90,11 +91,11 @@ export class Supervisor {
     const currentRecords = await this.deps.store.list();
     const active = new Set([
       ...currentRecords.filter((record) => record.status === "running" || record.status === "pr_open").map((record) => record.issueNumber),
-      ...refreshedIssues.filter((issue) => issue.labels.includes("factory:running")).map((issue) => issue.number),
+      ...refreshedIssues.filter((issue) => issue.labels.includes(DARK_KITCHEN_LABEL.running)).map((issue) => issue.number),
     ]);
     const activeCount = new Set([
       ...currentRecords.filter((record) => record.status === "running").map((record) => record.issueNumber),
-      ...refreshedIssues.filter((issue) => issue.labels.includes("factory:running")).map((issue) => issue.number),
+      ...refreshedIssues.filter((issue) => issue.labels.includes(DARK_KITCHEN_LABEL.running)).map((issue) => issue.number),
     ]).size;
     const available = Math.max(0, this.config.maxParallelIssues - activeCount);
     const ready = computeReadyIssues(refreshedGraph, active).slice(0, available);
@@ -102,7 +103,7 @@ export class Supervisor {
   }
 
   private async startIssue(issue: GitHubIssue, existing?: RuntimeRecord): Promise<void> {
-    await this.deps.github.editLabels(issue.number, ["factory:running"], ["factory:failed"]);
+    await this.deps.github.editLabels(issue.number, [DARK_KITCHEN_LABEL.running], [DARK_KITCHEN_LABEL.failed]);
     try {
       let worktree: OrcaWorktree;
       let branch = existing?.branch || "";
@@ -115,7 +116,7 @@ export class Supervisor {
       }
       if (!branch) branch = worktree.branch || await this.gitBranch(worktree.path);
       await this.deps.store.clearResult(issue.number);
-      const terminal = await this.deps.orca.createTerminal(worktree.id, `Factory #${issue.number}`, this.workflowCommand(issue));
+      const terminal = await this.deps.orca.createTerminal(worktree.id, `Dark Kitchen AI #${issue.number}`, this.workflowCommand(issue));
       const now = new Date().toISOString();
       const record: RuntimeRecord = {
         issueNumber: issue.number,
@@ -181,7 +182,7 @@ export class Supervisor {
       const pullRequest = await this.deps.github.createPullRequest(
         record.branch,
         this.config.baseBranch,
-        `[Factory] #${issue.number} ${issue.title}`,
+        `[Dark Kitchen AI] #${issue.number} ${issue.title}`,
         `## Summary\n${result.summary}\n\n## Tests\n${result.tests.map((test) => `- ${test}`).join("\n")}\n\n## Review\n${result.reviewSummary}\n\nCloses #${issue.number}`,
       );
       const checks = await this.deps.github.waitForChecks(pullRequest.number, this.config.checkTimeoutSeconds * 1000);
@@ -189,25 +190,25 @@ export class Supervisor {
       const checkSummary = checks.noChecks ? "No GitHub checks configured; local workflow tests were the available gate." : "GitHub checks passed.";
       if (!this.config.autoMerge) {
         await this.saveRecord({ ...record, status: "pr_open", pullRequestNumber: pullRequest.number, pullRequestUrl: pullRequest.url, checkSummary, updatedAt: new Date().toISOString() });
-        await this.deps.github.removeLabel(issue.number, "factory:running");
+        await this.deps.github.removeLabel(issue.number, DARK_KITCHEN_LABEL.running);
         return;
       }
       await this.deps.github.mergePullRequest(pullRequest.number);
       merged = true;
       if (!(await this.deps.github.issueIsClosed(issue.number))) await this.deps.github.closeIssue(issue.number);
       if (!(await this.deps.github.issueIsClosed(issue.number))) throw new Error(`Issue #${issue.number} did not close after merging PR #${pullRequest.number}`);
-      await this.deps.github.editLabels(issue.number, [], ["factory:running", "factory:failed", "factory:needs-human"]);
+      await this.deps.github.editLabels(issue.number, [], [DARK_KITCHEN_LABEL.running, DARK_KITCHEN_LABEL.failed, DARK_KITCHEN_LABEL.needsHuman]);
       await this.saveRecord({ ...record, status: "completed", pullRequestNumber: pullRequest.number, pullRequestUrl: pullRequest.url, checkSummary, updatedAt: new Date().toISOString() });
       await this.removeWorktreeBestEffort(record);
     } catch (error) {
-      if (merged) await this.permanentFailure(issue, `PR merged but Factory could not complete the issue transition: ${errorMessage(error)}`, record, [errorMessage(error)]);
+      if (merged) await this.permanentFailure(issue, `PR merged but Dark Kitchen AI could not complete the issue transition: ${errorMessage(error)}`, record, [errorMessage(error)]);
       else await this.handleFailure(record, errorMessage(error));
     }
   }
 
   private async humanBlocker(record: RuntimeRecord, result: Extract<WorkerResult, { status: "needs_human" }>): Promise<void> {
     const body = [
-      "## Factory needs human input",
+      "## Dark Kitchen AI needs human input",
       "",
       `**Category:** ${result.category}`,
       "",
@@ -223,10 +224,10 @@ export class Supervisor {
       "**Evidence**",
       ...(result.evidence?.map((item) => `- ${item}`) || ["- The preserved Orca worktree contains the current work."]),
     ].join("\n");
-    await this.deps.github.editLabels(record.issueNumber, ["factory:needs-human"], ["factory:running"]);
+    await this.deps.github.editLabels(record.issueNumber, [DARK_KITCHEN_LABEL.needsHuman], [DARK_KITCHEN_LABEL.running]);
     await this.deps.github.comment(record.issueNumber, body);
     await this.saveRecord({ ...record, status: "needs_human", updatedAt: new Date().toISOString(), lastError: result.summary });
-    await this.notify("Factory needs human input", `Issue #${record.issueNumber}: ${result.question}`);
+    await this.notify("Dark Kitchen AI needs human input", `Issue #${record.issueNumber}: ${result.question}`);
   }
 
   private async handleFailure(record: RuntimeRecord, message: string): Promise<void> {
@@ -241,10 +242,10 @@ export class Supervisor {
   }
 
   private async permanentFailure(issue: GitHubIssue, message: string, record?: RuntimeRecord, attempts: string[] = []): Promise<void> {
-    await this.deps.github.editLabels(issue.number, ["factory:failed"], ["factory:running"]);
-    await this.deps.github.comment(issue.number, `## Factory worker failed\n\n${message}\n\nAttempts:\n${attempts.map((attempt) => `- ${attempt}`).join("\n") || "- 1 workflow attempt"}\n\nThe Orca worktree is preserved for inspection.`);
+    await this.deps.github.editLabels(issue.number, [DARK_KITCHEN_LABEL.failed], [DARK_KITCHEN_LABEL.running]);
+    await this.deps.github.comment(issue.number, `## Dark Kitchen AI worker failed\n\n${message}\n\nAttempts:\n${attempts.map((attempt) => `- ${attempt}`).join("\n") || "- 1 workflow attempt"}\n\nThe Orca worktree is preserved for inspection.`);
     if (record) await this.saveRecord({ ...record, status: "failed", attempts, updatedAt: new Date().toISOString(), lastError: message });
-    await this.notify("Factory worker failed", `Issue #${issue.number}: ${message}`);
+    await this.notify("Dark Kitchen AI worker failed", `Issue #${issue.number}: ${message}`);
   }
 
   private async verifyWorktree(record: RuntimeRecord): Promise<void> {

@@ -1,3 +1,4 @@
+import { DARK_KITCHEN_LABEL } from "./types.js";
 import type { GitHubIssue, IssueGraph } from "./types.js";
 
 export function buildIssueGraph(issues: GitHubIssue[]): IssueGraph {
@@ -6,11 +7,11 @@ export function buildIssueGraph(issues: GitHubIssue[]): IssueGraph {
   for (const issue of issues) {
     for (const dependency of issue.blockedBy) {
       const blocker = byNumber.get(dependency.number);
-      if (blocker && isClosed(blocker) && !blocker.labels.includes("factory:auto")) {
+      if (blocker && isClosed(blocker) && !blocker.labels.includes(DARK_KITCHEN_LABEL.auto)) {
         closedNotPlanned.push({
           issueNumber: issue.number,
           dependencyNumber: blocker.number,
-          message: `#${issue.number} depends on closed #${blocker.number}, which was not marked factory:auto`,
+          message: `#${issue.number} depends on closed #${blocker.number}, which was not marked dark-kitchen:auto`,
         });
       }
     }
@@ -24,8 +25,8 @@ export function computeReadyIssues(
 ): GitHubIssue[] {
   if (graph.cycles.length > 0) return [];
   return graph.issues.filter((issue) => {
-    if (!isOpen(issue) || !issue.labels.includes("factory:auto")) return false;
-    if (activeIssues.has(issue.number) || issue.labels.includes("factory:needs-human") || issue.labels.includes("factory:failed")) return false;
+    if (!isOpen(issue) || !issue.labels.includes(DARK_KITCHEN_LABEL.auto)) return false;
+    if (activeIssues.has(issue.number) || issue.labels.includes(DARK_KITCHEN_LABEL.needsHuman) || issue.labels.includes(DARK_KITCHEN_LABEL.failed)) return false;
     return issue.blockedBy.every((dependency) => {
       const blocker = graph.byNumber.get(dependency.number);
       return Boolean(blocker && isClosed(blocker));
@@ -37,9 +38,9 @@ export function computeBlockedIssues(graph: IssueGraph, activeIssues = new Set<n
   const ready = new Set(computeReadyIssues(graph, activeIssues).map((issue) => issue.number));
   return graph.issues.filter((issue) =>
     isOpen(issue) &&
-    issue.labels.includes("factory:auto") &&
-    !issue.labels.includes("factory:needs-human") &&
-    !issue.labels.includes("factory:failed") &&
+    issue.labels.includes(DARK_KITCHEN_LABEL.auto) &&
+    !issue.labels.includes(DARK_KITCHEN_LABEL.needsHuman) &&
+    !issue.labels.includes(DARK_KITCHEN_LABEL.failed) &&
     !activeIssues.has(issue.number) &&
     !ready.has(issue.number),
   );

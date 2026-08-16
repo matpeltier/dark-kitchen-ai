@@ -1,13 +1,20 @@
 import { z } from "zod";
 
-export const FACTORY_LABELS = [
-  "factory:auto",
-  "factory:running",
-  "factory:needs-human",
-  "factory:failed",
+export const DARK_KITCHEN_LABELS = [
+  "dark-kitchen:auto",
+  "dark-kitchen:running",
+  "dark-kitchen:needs-human",
+  "dark-kitchen:failed",
 ] as const;
 
-export type FactoryLabel = (typeof FACTORY_LABELS)[number];
+export const DARK_KITCHEN_LABEL = {
+  auto: "dark-kitchen:auto",
+  running: "dark-kitchen:running",
+  needsHuman: "dark-kitchen:needs-human",
+  failed: "dark-kitchen:failed",
+} as const;
+
+export type DarkKitchenLabel = (typeof DARK_KITCHEN_LABELS)[number];
 
 export type CommandResult = {
   code: number;

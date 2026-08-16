@@ -9,7 +9,7 @@ import type { CommandResult, GitHubIssue, OrcaRepo, OrcaWorktree, PullRequest, R
 import { writeJson } from "../src/utils.js";
 
 function makeIssue(number: number, blockedBy: number[] = []): GitHubIssue {
-  return { number, title: `Issue ${number}`, body: "Implement it", state: "OPEN", labels: ["factory:auto"], blockedBy: blockedBy.map((value) => ({ number: value })), blocking: [] };
+  return { number, title: `Issue ${number}`, body: "Implement it", state: "OPEN", labels: ["dark-kitchen:auto"], blockedBy: blockedBy.map((value) => ({ number: value })), blocking: [] };
 }
 
 async function fixture(initialIssues: GitHubIssue[], options: { maxParallelIssues?: number; retries?: number } = {}) {
@@ -54,11 +54,11 @@ async function fixture(initialIssues: GitHubIssue[], options: { maxParallelIssue
   return { root, issues, events, github, orca, store, deps, config, setFinished: (value: boolean) => { terminalFinished = value; } };
 }
 
-describe("Factory supervisor", () => {
+describe("Dark Kitchen AI supervisor", () => {
   it("launches each ready issue once and respects max concurrency", async () => {
     const test = await fixture([makeIssue(1), makeIssue(2)], { maxParallelIssues: 1 });
     await new Supervisor(test.root, test.config, test.deps).run(true);
-    expect(test.events.filter((event) => event.startsWith("labels:") && event.includes("factory:running"))).toHaveLength(1);
+    expect(test.events.filter((event) => event.startsWith("labels:") && event.includes("dark-kitchen:running"))).toHaveLength(1);
     expect((await test.store.list()).filter((record) => record.status === "running")).toHaveLength(1);
   });
 
@@ -69,7 +69,7 @@ describe("Factory supervisor", () => {
     await writeJson(test.store.resultPath(1), { status: "needs_human", category: "requirement_ambiguity", summary: "Two valid behaviors", question: "Which behavior?", recommendation: "Choose one", evidence: ["Issue text"] });
     test.setFinished(true);
     await new Supervisor(test.root, test.config, test.deps).run(true);
-    expect(test.issues[0].labels).toContain("factory:needs-human");
+    expect(test.issues[0].labels).toContain("dark-kitchen:needs-human");
     expect(test.events.some((event) => event.startsWith("notify:"))).toBe(true);
     expect((await test.store.get(1))?.status).toBe("needs_human");
     expect((await test.store.list()).some((item) => item.issueNumber === 2 && item.status === "running")).toBe(true);
@@ -81,6 +81,6 @@ describe("Factory supervisor", () => {
     await test.store.save(record);
     await new Supervisor(test.root, test.config, test.deps).run(true);
     expect((await test.store.get(1))?.attempt).toBe(1);
-    expect(test.events.filter((event) => event.includes("factory:running"))).toHaveLength(0);
+    expect(test.events.filter((event) => event.includes("dark-kitchen:running"))).toHaveLength(0);
   });
 });

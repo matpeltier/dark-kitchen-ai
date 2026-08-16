@@ -1,3 +1,4 @@
+import { DARK_KITCHEN_LABEL } from "./types.js";
 import type { CommandRunner, GitHubIssue, IssueDependency, PullRequest } from "./types.js";
 import { commandFailure } from "./command.js";
 import { parseJsonOutput } from "./utils.js";
@@ -105,10 +106,10 @@ export class GitHubClient {
 
   async ensureLabels(): Promise<void> {
     const labels = [
-      ["factory:auto", "3b82f6", "Factory may launch this issue"],
-      ["factory:running", "f59e0b", "Factory is actively running this issue"],
-      ["factory:needs-human", "ef4444", "Factory needs human input"],
-      ["factory:failed", "991b1b", "Factory worker failed"],
+      [DARK_KITCHEN_LABEL.auto, "3b82f6", "Dark Kitchen AI may launch this issue"],
+      [DARK_KITCHEN_LABEL.running, "f59e0b", "Dark Kitchen AI is actively running this issue"],
+      [DARK_KITCHEN_LABEL.needsHuman, "ef4444", "Dark Kitchen AI needs human input"],
+      [DARK_KITCHEN_LABEL.failed, "991b1b", "Dark Kitchen AI worker failed"],
     ];
     for (const [name, color, description] of labels) {
       const result = await this.run("gh", this.args(["label", "create", name, "--color", color, "--description", description, "--force"]));

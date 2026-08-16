@@ -1,26 +1,30 @@
-# Factory V0 implementation plan
+# Dark Kitchen AI V0 implementation notes
 
-## Verified starting point
+This repository contains the deliberately small V0 implementation of Dark Kitchen AI. The project is a local supervisor, not a hosted agent platform.
 
-- This repository started empty (Git initialized, no commits).
-- Node 22.23.2, npm 10.9.8, Git 2.43.0, GitHub CLI 2.45.0, and Codex CLI 0.146.0 are installed.
-- GitHub CLI is authenticated and `gh issue view` exposes `blockedBy` and `blocking` JSON fields. The issue list/create/edit commands do not expose dependency fields, so Factory reads dependencies with issue-view/API-compatible commands.
-- Orca is installed as the local AppImage dispatcher. Its current CLI probes fail before command parsing with an Electron `--no-sandbox` startup error in this environment; `factory doctor` must report this exact failure.
-- `codex-workflow` and Bun are not currently on `PATH`. The generated workflow follows the current upstream `codex-workflow run <file> --config <path> --args <json> --json` shape and doctor reports the missing prerequisites.
+## Architecture
 
-## Phases
+- GitHub Issues and native issue dependencies are the durable product graph.
+- Dark Kitchen AI reads GitHub through the authenticated `gh` CLI and native dependency REST endpoints when the installed `gh` version does not expose dependency JSON fields directly.
+- Orca owns the repository registration, isolated worktrees, and workflow terminals.
+- `codex-workflow` runs the generated issue workflow and its role-routed subagents.
+- The supervisor owns readiness, runtime metadata, PRs, checks, merges, issue closure, labels, retries, and notifications.
+- `.factory/runtime/` is ephemeral and ignored by Git; `.factory/config.json` and generated workflow files are committed project configuration.
 
-1. **Skeleton** — TypeScript CLI, config/template generation, command execution seams, and doctor.
-2. **GitHub DAG** — issue/dependency loading, cycle detection, readiness, labels, status, and idempotent initialization.
-3. **Orca runtime** — JSON worktree/terminal commands, runtime records, lock/stop/reconcile behavior.
-4. **Dynamic workflow** — generated role-routed workflow, strict result schema, terminal completion handling.
-5. **Supervisor transitions** — PR creation, checks, merge, issue closure, dependency rescan, and bounded retries.
-6. **Human escalation** — structured issue comments, labels, macOS notifications, preserved worktrees, and label-based retry.
-7. **Bootstrap and polish** — `create`, README, focused unit tests, typecheck, and safe CLI smoke tests.
+## V0 phases
 
-## V0 choices
+1. CLI skeleton, configuration, repository detection, and Doctor.
+2. GitHub DAG loading, labels, readiness, cycles, and status.
+3. Orca worktree/terminal launch and local runtime records.
+4. Dynamic workflow execution, role routing, and strict worker results.
+5. PR/check/merge/close transitions and dependency rescans.
+6. Human escalation, macOS notifications, preserved worktrees, and retries.
+7. Bootstrap, packaging, open-source documentation, and focused tests.
 
-- GitHub remains the only durable project graph; `.factory/runtime/` is ephemeral and ignored.
-- The supervisor owns PRs, checks, merges, labels, and issue closure. Workers only change their current worktree and write `result.json`.
-- The default implementation uses direct `gh`, Orca, and `codex-workflow` commands behind small injectable adapters; no provider/plugin framework is introduced.
-- Closed dependencies satisfy the DAG but are surfaced as “closed not planned” when they were not Factory-managed.
+## Compatibility rule
+
+External CLIs evolve. Keep their command shapes in the small adapters under `src/`, prefer machine-readable output, and verify behavior with the installed versions before changing flags. If an installed tool differs from the documented examples, record the difference in the README and keep the failure message actionable.
+
+## Deliberate boundaries
+
+No cloud service, MCP server, custom backlog database, remote execution, Kubernetes layer, or generic provider plugin system belongs in V0. Role-based routing remains first-class because cost/quality selection is part of the intended workflow, but it uses only the backends supported by the installed codex-dynamic-workflows runtime.

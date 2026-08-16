@@ -77,7 +77,7 @@ export class RuntimeStore {
       await handle.writeFile(`${JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() })}\n`);
       await handle.close();
     } catch (error) {
-      throw new Error(`Another factory supervisor may already be running (${lockPath}): ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`Another Dark Kitchen AI supervisor may already be running (${lockPath}): ${error instanceof Error ? error.message : String(error)}`);
     }
     return async () => { try { await unlink(lockPath); } catch { /* already released */ } };
   }

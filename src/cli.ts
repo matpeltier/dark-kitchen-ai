@@ -8,9 +8,10 @@ import { createProject, findRepoRoot, initializeRepository } from "./init.js";
 import { buildDashboard, renderDashboard } from "./status.js";
 import { defaultDependencies, Supervisor } from "./supervisor.js";
 import { RuntimeStore } from "./runtime-store.js";
+import { DARK_KITCHEN_LABEL } from "./types.js";
 
 const program = new Command();
-program.name("factory").description("Keep a GitHub issue dependency graph moving through Orca and codex-dynamic-workflows").version("0.1.0");
+program.name("dark-kitchen-ai").alias("dka").description("Keep a GitHub issue dependency graph moving through Orca and codex-dynamic-workflows").version("0.1.0");
 
 program.command("create")
   .argument("<name>", "directory and GitHub repository name")
@@ -34,11 +35,11 @@ program.command("create")
   });
 
 program.command("init")
-  .description("Initialize an existing GitHub repository for Factory")
+  .description("Initialize an existing GitHub repository for Dark Kitchen AI")
   .action(async () => {
     const root = await findRepoRoot(process.cwd());
     const result = await initializeRepository(root);
-    console.log(`Initialized Factory in ${result.root}`);
+    console.log(`Initialized Dark Kitchen AI in ${result.root}`);
     if (result.changed.length) console.log(`Created/updated: ${result.changed.join(", ")}`);
     for (const warning of result.warnings) console.warn(`Warning: ${warning}`);
   });
@@ -50,7 +51,7 @@ program.command("doctor")
   });
 
 program.command("status")
-  .description("Show GitHub issues and local Factory runtime state")
+  .description("Show GitHub issues and local Dark Kitchen AI runtime state")
   .option("--json", "print machine-readable JSON")
   .action(async (options: { json?: boolean }) => {
     const root = await findRepoRoot(process.cwd());
@@ -60,7 +61,7 @@ program.command("status")
   });
 
 program.command("run")
-  .description("Run the foreground Factory supervisor")
+  .description("Run the foreground Dark Kitchen AI supervisor")
   .option("--once", "process one supervisor tick and exit")
   .action(async (options: { once?: boolean }) => {
     const root = await findRepoRoot(process.cwd());
@@ -96,7 +97,7 @@ program.command("retry")
     const dependencies = defaultDependencies(root, config);
     const supervisor = new Supervisor(root, config, dependencies);
     const issue = await dependencies.github.viewIssue(issueNumber);
-    if (!issue.labels.includes("factory:auto")) throw new Error(`Issue #${issueNumber} is not marked factory:auto`);
+    if (!issue.labels.includes(DARK_KITCHEN_LABEL.auto)) throw new Error(`Issue #${issueNumber} is not marked ${DARK_KITCHEN_LABEL.auto}`);
     await supervisor.retry(issueNumber);
   });
 
@@ -107,6 +108,6 @@ async function printDoctor(cwd: string): Promise<void> {
 }
 
 program.parseAsync().catch((error: unknown) => {
-  console.error(`factory: ${error instanceof Error ? error.message : String(error)}`);
+  console.error(`dark-kitchen-ai: ${error instanceof Error ? error.message : String(error)}`);
   process.exitCode = 1;
 });

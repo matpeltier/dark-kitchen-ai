@@ -5,6 +5,7 @@ import { RuntimeStore } from "./runtime-store.js";
 import { formatDuration } from "./utils.js";
 import { formatRouting } from "./doctor.js";
 import { runCommand } from "./command.js";
+import { DARK_KITCHEN_LABEL } from "./types.js";
 import type { GitHubIssue, RuntimeRecord } from "./types.js";
 
 export type Dashboard = {
@@ -29,14 +30,14 @@ export async function buildDashboard(root: string): Promise<Dashboard> {
   const byIssue = new Map(runtime.map((record) => [record.issueNumber, record]));
   const active = new Set([
     ...runtime.filter((record) => record.status === "running" || record.status === "pr_open").map((record) => record.issueNumber),
-    ...issues.filter((issue) => issue.labels.includes("factory:running")).map((issue) => issue.number),
+    ...issues.filter((issue) => issue.labels.includes(DARK_KITCHEN_LABEL.running)).map((issue) => issue.number),
   ]);
   const ready = computeReadyIssues(graph, active);
   const blocked = computeBlockedIssues(graph, active);
-  const needsHuman = issues.filter((issue) => isOpen(issue) && issue.labels.includes("factory:needs-human"));
-  const failed = issues.filter((issue) => isOpen(issue) && issue.labels.includes("factory:failed"));
+  const needsHuman = issues.filter((issue) => isOpen(issue) && issue.labels.includes(DARK_KITCHEN_LABEL.needsHuman));
+  const failed = issues.filter((issue) => isOpen(issue) && issue.labels.includes(DARK_KITCHEN_LABEL.failed));
   const done = issues.filter(isClosed);
-  const running = issues.filter((issue) => active.has(issue.number) || issue.labels.includes("factory:running")).map((issue) => {
+  const running = issues.filter((issue) => active.has(issue.number) || issue.labels.includes(DARK_KITCHEN_LABEL.running)).map((issue) => {
     const record = byIssue.get(issue.number);
     return { issue, runtime: record, duration: record ? formatDuration(record.startedAt) : undefined };
   });

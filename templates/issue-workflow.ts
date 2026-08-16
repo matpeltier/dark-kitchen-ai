@@ -1,7 +1,7 @@
 export const meta = {
-  name: "factory-issue",
+  name: "dark-kitchen-issue",
   description: "Implement, review, and verify one GitHub issue.",
-  whenToUse: "For a Factory-managed GitHub issue.",
+  whenToUse: "For a Dark Kitchen AI-managed GitHub issue.",
   phases: [
     { title: "Architecture" },
     { title: "Implementation" },

@@ -22,7 +22,7 @@ export type InitOptions = {
 
 export async function findRepoRoot(cwd: string): Promise<string> {
   const result = await runCommand("git", ["rev-parse", "--show-toplevel"], { cwd });
-  if (result.code !== 0) throw new Error("Current directory is not inside a Git repository. Run factory create or cd into a Git repository.");
+  if (result.code !== 0) throw new Error("Current directory is not inside a Git repository. Run dark-kitchen-ai create or cd into a Git repository.");
   return result.stdout.trim();
 }
 
@@ -77,7 +77,7 @@ export async function initializeRepository(root: string, options: InitOptions = 
   if (options.commit !== false && changed.length > 0) {
     const addResult = await command("git", ["add", "--", ...changed], { cwd: root });
     if (addResult.code !== 0) throw new Error(`git add failed: ${addResult.stderr || addResult.stdout}`);
-    const commitResult = await command("git", ["commit", "-m", "chore: initialize Factory"], { cwd: root });
+    const commitResult = await command("git", ["commit", "-m", "chore: initialize Dark Kitchen AI"], { cwd: root });
     if (commitResult.code !== 0) warnings.push(`Initialization files were created but not committed: ${commitResult.stderr.trim() || commitResult.stdout.trim()}`);
   }
   return { root, changed, warnings };
@@ -91,7 +91,7 @@ export async function createProject(
   const absolute = path.resolve(target);
   try {
     const entries = await readdir(absolute);
-    if (entries.length >= 0) throw new Error(`Directory ${absolute} already exists. Use factory init there; Factory will not overwrite it.`);
+    if (entries.length >= 0) throw new Error(`Directory ${absolute} already exists. Use dark-kitchen-ai init there; Dark Kitchen AI will not overwrite it.`);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }

@@ -1,7 +1,7 @@
 import type { FactoryConfig } from "./types.js";
 
 export const FACTORY_AGENTS_SECTION = `<!-- BEGIN FACTORY MANAGED SECTION -->
-## Factory rules
+## Dark Kitchen AI rules
 
 GitHub Issues define the requirements for the current task.
 
@@ -30,7 +30,7 @@ Escalate only when genuinely blocked by:
 - repeated failure after multiple reasonable attempts.
 
 Never launch another GitHub issue yourself.
-Finish only the current issue and return control to the Factory supervisor.
+Finish only the current issue and return control to the Dark Kitchen AI supervisor.
 <!-- END FACTORY MANAGED SECTION -->`;
 
 export function configTemplate(config: FactoryConfig): string {
@@ -51,7 +51,14 @@ const configPath = process.env.FACTORY_CONFIG_PATH
 const factoryConfig = JSON.parse(readFileSync(configPath, "utf8"));
 
 export default {
-  providers: factoryConfig.providers,
+  providers: Object.fromEntries(
+    Object.entries(factoryConfig.providers).map(([name, provider]) => [
+      name,
+      provider.backend === "codex"
+        ? { ...provider, sandbox: provider.sandbox ?? "danger-full-access" }
+        : provider,
+    ]),
+  ),
   default: factoryConfig.agents.implementer,
 };
 `;

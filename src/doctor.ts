@@ -3,6 +3,7 @@ import { loadConfig, providerNames, validateRoleProviders } from "./config.js";
 import { GitHubClient } from "./github.js";
 import { findRepoRoot } from "./init.js";
 import { OrcaClient } from "./orca.js";
+import { DARK_KITCHEN_LABELS } from "./types.js";
 import type { FactoryConfig } from "./types.js";
 
 export type DoctorCheck = { name: string; ok: boolean; detail: string };
@@ -82,7 +83,7 @@ export async function runDoctor(cwd: string): Promise<{ checks: DoctorCheck[]; o
     } catch (error) {
       add(".factory/config.json", false, errorMessage(error));
     }
-    add("AGENTS.md", await fileExistsAt(`${root}/AGENTS.md`), "managed Factory rules are merged, not replacing user instructions");
+    add("AGENTS.md", await fileExistsAt(`${root}/AGENTS.md`), "managed Dark Kitchen AI rules are merged, not replacing user instructions");
   }
 
   if (config) {
@@ -95,7 +96,7 @@ export async function runDoctor(cwd: string): Promise<{ checks: DoctorCheck[]; o
         add("Orca runtime/app", true, "status --json succeeded");
         if (root) {
           const repos = await orca.listRepos();
-          add("Orca repo registration", repos.some((repo) => repo.path === root), repos.some((repo) => repo.path === root) ? root : "repository is not registered; run factory init");
+          add("Orca repo registration", repos.some((repo) => repo.path === root), repos.some((repo) => repo.path === root) ? root : "repository is not registered; run dark-kitchen-ai init");
         }
       } catch (error) {
         add("Orca runtime/app", false, errorMessage(error));
@@ -136,11 +137,10 @@ export async function runDoctor(cwd: string): Promise<{ checks: DoctorCheck[]; o
       }
     }
     const major = Number(process.versions.node.split(".")[0]);
-    add("Node.js", major >= 20, `v${process.versions.node} (Factory requires Node >= 20)`);
+    add("Node.js", major >= 22, `v${process.versions.node} (Dark Kitchen AI requires Node >= 22)`);
     const labelResult = await safeRun("gh", ["label", "list", "--limit", "100", "--json", "name"]);
     const labels = labelResult.code === 0 ? new Set((JSON.parse(labelResult.stdout) as Array<{ name?: string }>).map((label) => label.name)) : new Set<string>();
-    const requiredLabels = ["factory:auto", "factory:running", "factory:needs-human", "factory:failed"];
-    add("GitHub labels", labelResult.code === 0 && requiredLabels.every((label) => labels.has(label)), labelResult.code === 0 ? `required: ${requiredLabels.join(", ")}` : trimOutput(labelResult.stderr));
+    add("GitHub labels", labelResult.code === 0 && DARK_KITCHEN_LABELS.every((label) => labels.has(label)), labelResult.code === 0 ? `required: ${DARK_KITCHEN_LABELS.join(", ")}` : trimOutput(labelResult.stderr));
   }
 
   return { checks, ok: checks.every((check) => check.ok) };

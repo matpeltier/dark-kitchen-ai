@@ -1,6 +1,6 @@
 <!-- This file is the reference for the managed section generated into AGENTS.md. -->
 <!-- BEGIN FACTORY MANAGED SECTION -->
-## Factory rules
+## Dark Kitchen AI rules
 
 GitHub Issues define the requirements for the current task.
 
@@ -17,5 +17,5 @@ Do NOT escalate to the human for ordinary bugs, failing tests, documentation, im
 
 Escalate only for genuine product/requirement blockers, missing required access, destructive approval, or repeated reasonable failure.
 
-Never launch another GitHub issue yourself. Finish only the current issue and return control to the Factory supervisor.
+Never launch another GitHub issue yourself. Finish only the current issue and return control to the Dark Kitchen AI supervisor.
 <!-- END FACTORY MANAGED SECTION -->

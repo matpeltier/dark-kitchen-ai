@@ -1,16 +1,51 @@
 {
-  "name": "factory-cli",
+  "name": "dark-kitchen-ai",
   "version": "0.1.0",
-  "description": "A small GitHub issue graph supervisor for Orca and codex-dynamic-workflows.",
+  "description": "A local GitHub issue graph supervisor for Orca and codex-dynamic-workflows.",
+  "keywords": [
+    "ai",
+    "coding-agent",
+    "github-issues",
+    "github-actions",
+    "orca",
+    "codex",
+    "worktrees",
+    "automation"
+  ],
+  "author": "Mathieu PELTIER",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/matpeltier/dark-kitchen-ai.git"
+  },
+  "homepage": "https://github.com/matpeltier/dark-kitchen-ai#readme",
+  "bugs": {
+    "url": "https://github.com/matpeltier/dark-kitchen-ai/issues"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "bin": {
-    "factory": "dist/cli.js"
+    "dark-kitchen-ai": "dist/cli.js",
+    "dka": "dist/cli.js"
   },
+  "files": [
+    "dist",
+    "templates",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
-    "dev": "tsx src/cli.ts"
+    "dev": "tsx src/cli.ts",
+    "prepublishOnly": "npm run typecheck && npm test && npm run build",
+    "pack:check": "npm pack --dry-run"
   },
   "dependencies": {
     "commander": "^14.0.0",
