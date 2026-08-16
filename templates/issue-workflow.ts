@@ -1,3 +1,15 @@
+export const meta = {
+  name: "factory-issue",
+  description: "Implement, review, and verify one GitHub issue.",
+  whenToUse: "For a Factory-managed GitHub issue.",
+  phases: [
+    { title: "Architecture" },
+    { title: "Implementation" },
+    { title: "Independent review" },
+    { title: "Fix and reverify" },
+  ],
+};
+
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import factoryConfig from "../config.json" with { type: "json" };
@@ -13,7 +25,7 @@ const IMPLEMENTATION_SCHEMA = {
     category: { type: "string" }, recommendation: { type: "string" },
     tests: { type: "array", items: { type: "string" } }
   },
-  required: ["status", "summary", "question", "category", "recommendation", "tests"]
+    required: ["status", "summary", "tests"]
 };
 
 const REVIEW_SCHEMA = {
@@ -32,7 +44,7 @@ const FIX_SCHEMA = {
     summary: { type: "string" }, question: { type: "string" },
     category: { type: "string" }, recommendation: { type: "string" }
   },
-  required: ["status", "summary", "question", "category", "recommendation"]
+    required: ["status", "summary"]
 };
 
 function provider(role: keyof typeof factoryConfig.agents): string {
