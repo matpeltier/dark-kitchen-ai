@@ -24,8 +24,10 @@ export async function runDoctor(cwd: string): Promise<{ checks: DoctorCheck[]; o
   const github = new GitHubClient(runCommand);
   const auth = await github.authStatus();
   add("GitHub authentication", auth.ok, trimOutput(auth.output) || "gh auth status failed");
+  let repoName: string | undefined;
   try {
     const repo = await github.repository();
+    repoName = repo.nameWithOwner;
     add("GitHub remote", true, `${repo.nameWithOwner} (base ${repo.defaultBranch})`);
   } catch (error) {
     add("GitHub remote", false, errorMessage(error));
@@ -34,16 +36,31 @@ export async function runDoctor(cwd: string): Promise<{ checks: DoctorCheck[]; o
   const help = await safeRun("gh", ["issue", "view", "--help"]);
   let dependencyCapability = help.code === 0 && /--json fields/.test(help.stdout);
   let dependencyDetail = dependencyCapability ? "gh issue view supports JSON fields" : trimOutput(help.stderr);
-  const issueList = await safeRun("gh", ["issue", "list", "--state", "all", "--limit", "1", "--json", "number"]);
+  const issueListArgs = ["issue", "list", "--state", "all", "--limit", "1", "--json", "number"];
+  if (repoName) issueListArgs.push("--repo", repoName);
+  const issueList = await safeRun("gh", issueListArgs);
   if (dependencyCapability && issueList.code === 0) {
     try {
       const first = (JSON.parse(issueList.stdout) as Array<{ number?: number }>)[0];
       if (first?.number) {
-        const dependencyProbe = await safeRun("gh", ["issue", "view", String(first.number), "--json", "blockedBy,blocking"]);
-        dependencyCapability = dependencyProbe.code === 0 || !/unknown|unsupported|invalid.*field/i.test(`${dependencyProbe.stdout}\n${dependencyProbe.stderr}`);
-        dependencyDetail = dependencyProbe.code === 0 ? "blockedBy/blocking JSON fields verified against a real issue" : `blockedBy/blocking probe: ${trimOutput(dependencyProbe.stderr || dependencyProbe.stdout)}`;
+        const dependencyProbeArgs = ["issue", "view", String(first.number), "--json", "blockedBy,blocking"];
+        if (repoName) dependencyProbeArgs.push("--repo", repoName);
+        const dependencyProbe = await safeRun("gh", dependencyProbeArgs);
+        if (dependencyProbe.code === 0) {
+          dependencyDetail = "blockedBy/blocking JSON fields verified against a real issue";
+        } else if (repoName) {
+          const blockedByProbe = await safeRun("gh", ["api", `repos/${repoName}/issues/${first.number}/dependencies/blocked_by?per_page=100`]);
+          const blockingProbe = await safeRun("gh", ["api", `repos/${repoName}/issues/${first.number}/dependencies/blocking?per_page=100`]);
+          dependencyCapability = blockedByProbe.code === 0 && blockingProbe.code === 0;
+          dependencyDetail = dependencyCapability
+            ? "gh issue view lacks blockedBy/blocking; native dependency REST endpoints verified via gh api"
+            : `blockedBy/blocking API probe failed: ${trimOutput(blockedByProbe.stderr || blockingProbe.stderr)}`;
+        } else {
+          dependencyCapability = false;
+          dependencyDetail = `blockedBy/blocking probe: ${trimOutput(dependencyProbe.stderr || dependencyProbe.stdout)}`;
+        }
       } else {
-        dependencyDetail = "gh issue view supports the required JSON fields (repository has no issues to probe)";
+        dependencyDetail = "repository has no issues to probe; dependency capability will be checked when issues exist";
       }
     } catch {
       dependencyCapability = false;

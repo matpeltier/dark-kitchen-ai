@@ -10,19 +10,23 @@ export type GitHubRepository = {
 type GhLabel = { name?: string };
 
 export class GitHubClient {
+  private resolvedRepo?: string;
+
   constructor(
     private readonly run: CommandRunner,
     private readonly repo?: string,
   ) {}
 
   private args(args: string[]): string[] {
-    return this.repo ? [...args, "--repo", this.repo] : args;
+    const repo = this.repo || this.resolvedRepo;
+    return repo ? [...args, "--repo", repo] : args;
   }
 
   async repository(): Promise<GitHubRepository> {
     const result = await this.run("gh", this.args(["repo", "view", "--json", "nameWithOwner,defaultBranchRef"]));
     if (result.code !== 0) throw commandFailure(result);
     const data = parseJsonOutput<{ nameWithOwner: string; defaultBranchRef?: { name?: string } | null }>(result.stdout, "gh repo view");
+    this.resolvedRepo = data.nameWithOwner;
     return { nameWithOwner: data.nameWithOwner, defaultBranch: data.defaultBranchRef?.name || "main" };
   }
 
@@ -32,6 +36,7 @@ export class GitHubClient {
   }
 
   async listIssues(): Promise<GitHubIssue[]> {
+    await this.repository();
     const result = await this.run("gh", this.args([
       "issue", "list", "--state", "all", "--limit", "1000",
       "--json", "number,title,body,state,labels,url,closedAt",
@@ -47,13 +52,31 @@ export class GitHubClient {
   }
 
   async viewIssue(number: number): Promise<GitHubIssue> {
+    await this.ensureRepositoryName();
     const result = await this.run("gh", this.args([
       "issue", "view", String(number),
-      "--json", "number,title,body,state,labels,blockedBy,blocking,url,closedAt",
+      "--json", "number,title,body,state,labels,url,closedAt",
     ]));
     if (result.code !== 0) throw commandFailure(result);
     const raw = parseJsonOutput<Record<string, unknown>>(result.stdout, `gh issue view #${number}`);
-    return normalizeIssue(raw, number);
+    const [blockedBy, blocking] = await Promise.all([
+      this.listDependencyEndpoint(number, "blocked_by"),
+      this.listDependencyEndpoint(number, "blocking"),
+    ]);
+    return { ...normalizeIssue(raw, number), blockedBy, blocking };
+  }
+
+  private async ensureRepositoryName(): Promise<string> {
+    if (this.repo) return this.repo;
+    if (this.resolvedRepo) return this.resolvedRepo;
+    return (await this.repository()).nameWithOwner;
+  }
+
+  private async listDependencyEndpoint(number: number, endpoint: "blocked_by" | "blocking"): Promise<IssueDependency[]> {
+    const repo = await this.ensureRepositoryName();
+    const result = await this.run("gh", ["api", `repos/${repo}/issues/${number}/dependencies/${endpoint}?per_page=100`]);
+    if (result.code !== 0) throw commandFailure(result);
+    return normalizeDependencies(parseJsonOutput<unknown>(result.stdout, `gh api issue ${endpoint}`));
   }
 
   async addLabel(number: number, label: string): Promise<void> {
