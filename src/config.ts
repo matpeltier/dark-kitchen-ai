@@ -68,7 +68,8 @@ export function defaultConfig(): FactoryConfig {
 
 export async function loadConfig(root: string): Promise<FactoryConfig> {
   const raw = JSON.parse(await readFile(path.join(root, CONFIG_PATH), "utf8")) as unknown;
-  return factoryConfigSchema.parse(raw);
+  const config = factoryConfigSchema.parse(raw);
+  return process.env.ORCA_CLI_COMMAND ? { ...config, orcaCommand: process.env.ORCA_CLI_COMMAND } : config;
 }
 
 export function configPath(root: string): string {

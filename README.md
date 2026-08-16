@@ -20,6 +20,8 @@ The default generated profile uses the current Codex provider shape documented b
 
 The installed environment used while building this V0 had Codex and `gh`, but no Bun or `codex-workflow`; its Orca AppImage dispatcher also failed before command parsing with an Electron `--no-sandbox` error. `factory doctor` reports those conditions rather than pretending the runtime is ready.
 
+For managed environments that expose a version-matched Orca executable under a non-default path, set `ORCA_CLI_COMMAND`; Factory uses it for the current run without writing credentials or runtime state into the project.
+
 ## Setup
 
 From this repository during development:
