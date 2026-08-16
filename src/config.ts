@@ -39,7 +39,7 @@ export const factoryConfigSchema = z.object({
 });
 
 export function defaultConfig(): FactoryConfig {
-  const codex: ProviderConfig = { backend: "codex", model: "gpt-5-codex", reasoning: "high" };
+  const codex: ProviderConfig = { backend: "codex", model: "gpt-5.6-luna", reasoning: "high" };
   return {
     version: 1,
     maxParallelIssues: 3,

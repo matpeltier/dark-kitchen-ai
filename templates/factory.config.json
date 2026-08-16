@@ -12,8 +12,8 @@
   "checkTimeoutSeconds": 1800,
   "agents": { "architect": "architect", "implementer": "implementer", "reviewer": "reviewer", "fixer": "implementer" },
   "providers": {
-    "architect": { "backend": "codex", "model": "gpt-5-codex", "reasoning": "high" },
-    "implementer": { "backend": "codex", "model": "gpt-5-codex", "reasoning": "medium" },
-    "reviewer": { "backend": "codex", "model": "gpt-5-codex", "reasoning": "high" }
+    "architect": { "backend": "codex", "model": "gpt-5.6-luna", "reasoning": "high" },
+    "implementer": { "backend": "codex", "model": "gpt-5.6-luna", "reasoning": "medium" },
+    "reviewer": { "backend": "codex", "model": "gpt-5.6-luna", "reasoning": "high" }
   }
 }

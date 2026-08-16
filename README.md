@@ -16,7 +16,7 @@ It is deliberately not a cloud service, MCP server, backlog database, generic ag
 - `codex-dynamic-workflows` (`codex-workflow`)
 - The backend CLIs and credentials referenced by `.factory/config.json`
 
-The default generated profile uses the current Codex provider shape documented by `codex-dynamic-workflows` (`gpt-5-codex`) and routes all roles to Codex. The prompt's GPT-5.6 Sol and DeepSeek examples are intentionally not hard-coded because model availability is account/provider-specific. Edit the provider map to use Pi or Gemini for selected roles; Factory Doctor checks only backends and API-key environment variables actually referenced by the active roles. Secrets are read from the environment and never written to the repository.
+The default generated profile routes all roles to Codex using `gpt-5.6-luna`, the model available to the authenticated Codex CLI used to validate this demo. Model availability is account-specific: edit the provider map when your account exposes a different current model. Edit the provider map to use Pi or Gemini for selected roles; Factory Doctor checks only backends and API-key environment variables actually referenced by the active roles. Secrets are read from the environment and never written to the repository.
 
 The installed environment used while building this V0 had Codex and `gh`, but no Bun or `codex-workflow`; its Orca AppImage dispatcher also failed before command parsing with an Electron `--no-sandbox` error. `factory doctor` reports those conditions rather than pretending the runtime is ready.
 
@@ -98,9 +98,9 @@ Role names are in `.factory/config.json`; provider definitions are in the same f
     "fixer": "implementer"
   },
   "providers": {
-    "architect": { "backend": "codex", "model": "gpt-5-codex", "reasoning": "high" },
+    "architect": { "backend": "codex", "model": "gpt-5.6-luna", "reasoning": "high" },
     "implementer": { "backend": "pi", "baseUrl": "https://api.deepseek.com", "api": "openai-completions", "model": "deepseek-v4-flash", "apiKeyEnv": "DEEPSEEK_API_KEY" },
-    "reviewer": { "backend": "codex", "model": "gpt-5-codex", "reasoning": "high" }
+    "reviewer": { "backend": "codex", "model": "gpt-5.6-luna", "reasoning": "high" }
   }
 }
 ```
