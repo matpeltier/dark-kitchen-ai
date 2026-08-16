@@ -87,10 +87,10 @@ export async function runDoctor(cwd: string): Promise<{ checks: DoctorCheck[]; o
   }
 
   if (config) {
-    const orcaAvailable = await commandAvailable(config.orcaCommand);
-    add("Orca CLI", orcaAvailable, config.orcaCommand);
+    const orcaAvailable = await commandAvailable(config.orca.command);
+    add("Orca CLI", orcaAvailable, formatCommand(config.orca.command, config.orca.args));
     if (orcaAvailable) {
-      const orca = new OrcaClient(config.orcaCommand, runCommand);
+      const orca = new OrcaClient(config.orca, runCommand);
       try {
         await orca.status();
         add("Orca runtime/app", true, "status --json succeeded");
@@ -163,3 +163,4 @@ async function fileExistsAt(filePath: string): Promise<boolean> {
 
 function errorMessage(error: unknown): string { return error instanceof Error ? error.message : String(error); }
 function trimOutput(value: string): string { return value.trim().replace(/\s+/g, " ").slice(0, 240); }
+function formatCommand(command: string, args: string[]): string { return [command, ...args].map((value) => JSON.stringify(value)).join(" "); }

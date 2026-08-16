@@ -10,6 +10,7 @@ import { defaultDependencies, Supervisor } from "./supervisor.js";
 import { RuntimeStore } from "./runtime-store.js";
 import { DARK_KITCHEN_LABEL } from "./types.js";
 import { bundledSkillPath, installSkill } from "./skill.js";
+import type { FactoryConfig } from "./types.js";
 
 const program = new Command();
 program.name("dark-kitchen-ai").alias("dka").description("Keep a GitHub issue dependency graph moving through Orca and codex-dynamic-workflows").version("0.1.0");
@@ -20,7 +21,9 @@ program.command("create")
   .option("--private", "create a private repository (default)")
   .option("--max-parallel <n>", "maximum concurrent issues")
   .option("--no-auto-merge", "leave passing PRs open")
-  .action(async (name: string, options: { public?: boolean; private?: boolean; maxParallel?: string; autoMerge: boolean }) => {
+  .option("--orca-command <command>", "Orca command or runtime executable")
+  .option("--orca-arg <arg>", "argument passed to Orca (repeatable)", collectOption, [])
+  .action(async (name: string, options: { public?: boolean; private?: boolean; maxParallel?: string; autoMerge: boolean; orcaCommand?: string; orcaArg?: string[] }) => {
     if (options.public && options.private) throw new Error("Choose only one of --public or --private");
     const interactive = input.isTTY ? createInterface({ input, output }) : undefined;
     const answer = async (question: string, fallback: string) => interactive ? (await interactive.question(`${question} [${fallback}] `)).trim() || fallback : fallback;
@@ -29,7 +32,11 @@ program.command("create")
     const autoMerge = options.autoMerge === false ? false : (await answer("Auto-merge passing PRs? (yes/no)", "yes")).toLowerCase() !== "no";
     interactive?.close();
     if (!Number.isInteger(maxParallel) || maxParallel < 1) throw new Error("Maximum parallel issues must be a positive integer");
-    const result = await createProject(name, visibility, { maxParallelIssues: maxParallel, autoMerge });
+    const result = await createProject(name, visibility, {
+      maxParallelIssues: maxParallel,
+      autoMerge,
+      ...(orcaOverrides(options) ?? {}),
+    });
     console.log(`Created ${result.root}`);
     for (const warning of result.warnings) console.warn(`Warning: ${warning}`);
     await printDoctor(result.root);
@@ -37,9 +44,11 @@ program.command("create")
 
 program.command("init")
   .description("Initialize an existing GitHub repository for Dark Kitchen AI")
-  .action(async () => {
+  .option("--orca-command <command>", "Orca command or runtime executable")
+  .option("--orca-arg <arg>", "argument passed to Orca (repeatable)", collectOption, [])
+  .action(async (options: { orcaCommand?: string; orcaArg?: string[] }) => {
     const root = await findRepoRoot(process.cwd());
-    const result = await initializeRepository(root);
+    const result = await initializeRepository(root, { config: orcaOverrides(options) });
     console.log(`Initialized Dark Kitchen AI in ${result.root}`);
     if (result.changed.length) console.log(`Created/updated: ${result.changed.join(", ")}`);
     for (const warning of result.warnings) console.warn(`Warning: ${warning}`);
@@ -119,6 +128,17 @@ async function printDoctor(cwd: string): Promise<void> {
   const result = await runDoctor(cwd);
   for (const check of result.checks) console.log(`${check.ok ? "✓" : "✗"} ${check.name}: ${check.detail}`);
   if (!result.ok) process.exitCode = 1;
+}
+
+function collectOption(value: string, previous: string[]): string[] {
+  return [...previous, value];
+}
+
+function orcaOverrides(options: { orcaCommand?: string; orcaArg?: string[] }): Partial<FactoryConfig> | undefined {
+  const args = options.orcaArg ?? [];
+  if (!options.orcaCommand && args.length > 0) throw new Error("--orca-command is required when using --orca-arg");
+  if (!options.orcaCommand) return undefined;
+  return { orca: { command: options.orcaCommand, args } };
 }
 
 program.parseAsync().catch((error: unknown) => {

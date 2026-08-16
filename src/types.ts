@@ -28,6 +28,11 @@ export type CommandRunner = (
   options?: { cwd?: string; env?: NodeJS.ProcessEnv; timeoutMs?: number },
 ) => Promise<CommandResult>;
 
+export type CommandSpec = {
+  command: string;
+  args: string[];
+};
+
 export type IssueDependency = {
   number: number;
   title?: string;
@@ -72,13 +77,13 @@ export type ProviderConfig = {
 };
 
 export type FactoryConfig = {
-  version: 1;
+  version: 2;
   maxParallelIssues: number;
   pollIntervalSeconds: number;
   autoMerge: boolean;
   baseBranch: string;
   workflowCommand: string;
-  orcaCommand: string;
+  orca: CommandSpec;
   workflowFile: string;
   workflowConfig: string;
   maxWorkflowRetries: number;

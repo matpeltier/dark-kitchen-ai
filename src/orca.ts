@@ -1,15 +1,15 @@
-import type { CommandRunner, OrcaRepo, OrcaWorktree } from "./types.js";
+import type { CommandRunner, CommandSpec, OrcaRepo, OrcaWorktree } from "./types.js";
 import { commandFailure } from "./command.js";
 import { parseJsonOutput } from "./utils.js";
 
 export class OrcaClient {
   constructor(
-    private readonly command: string,
+    private readonly spec: CommandSpec,
     private readonly run: CommandRunner,
   ) {}
 
   async invoke(args: string[]): Promise<{ code: number; stdout: string; stderr: string }> {
-    return this.run(this.command, args);
+    return this.run(this.spec.command, [...this.spec.args, ...args]);
   }
 
   async status(): Promise<unknown> {

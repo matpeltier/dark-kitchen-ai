@@ -2,7 +2,7 @@ import path from "node:path";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { runCommand } from "./command.js";
 import { GitHubClient, type GitHubRepository } from "./github.js";
-import { defaultConfig } from "./config.js";
+import { defaultConfig, normalizeConfig } from "./config.js";
 import { FACTORY_AGENTS_SECTION, PROVIDER_CONFIG_TEMPLATE, configTemplate } from "./templates.js";
 import { ensureDir, fileExists } from "./utils.js";
 import type { CommandRunner, FactoryConfig } from "./types.js";
@@ -30,9 +30,21 @@ export async function initializeRepository(root: string, options: InitOptions = 
   const command: CommandRunner = options.run ?? ((commandName, args, commandOptions = {}) => runCommand(commandName, args, { ...commandOptions, cwd: commandOptions.cwd ?? root }));
   const github = options.github ?? new GitHubClient(command);
   const repository = await github.repository();
-  const config = mergeConfig(defaultConfig(), options.config, repository.defaultBranch);
+  const configPath = path.join(root, ".factory", "config.json");
+  const existingConfig = await fileExists(configPath);
+  let config = mergeConfig(defaultConfig(), options.config, repository.defaultBranch);
   const changed: string[] = [];
   const warnings: string[] = [];
+
+  if (existingConfig) {
+    const raw = JSON.parse(await readFile(configPath, "utf8")) as unknown;
+    const normalized = normalizeConfig(raw);
+    config = mergeConfig(normalized.config, options.config, repository.defaultBranch);
+    if (normalized.migrated || options.config) {
+      await writeFile(configPath, configTemplate(config), "utf8");
+      changed.push(".factory/config.json");
+    }
+  }
 
   await ensureDir(path.join(root, ".factory", "workflows"));
   const files: Array<[string, string]> = [
@@ -43,8 +55,11 @@ export async function initializeRepository(root: string, options: InitOptions = 
   ];
   for (const [relative, content] of files) {
     const target = path.join(root, relative);
-    if (!(await fileExists(target))) {
+    if (!(await fileExists(target)) && relative !== ".factory/config.json") {
       await writeFile(target, content, "utf8");
+      changed.push(relative);
+    } else if (!(await fileExists(target))) {
+      await writeFile(target, configTemplate(config), "utf8");
       changed.push(relative);
     }
   }
@@ -67,8 +82,7 @@ export async function initializeRepository(root: string, options: InitOptions = 
 
   await github.ensureLabels();
   if (options.registerOrca !== false) {
-    const orcaCommand = config.orcaCommand;
-    const orcaResult = await command(orcaCommand, ["repo", "add", "--path", root, "--json"]);
+    const orcaResult = await command(config.orca.command, [...config.orca.args, "repo", "add", "--path", root, "--json"]);
     if (orcaResult.code !== 0 && !/already|exists|registered/i.test(`${orcaResult.stdout}\n${orcaResult.stderr}`)) {
       warnings.push(`Orca registration failed: ${orcaResult.stderr.trim() || orcaResult.stdout.trim()}`);
     }
@@ -112,6 +126,7 @@ function mergeConfig(base: FactoryConfig, overrides: Partial<FactoryConfig> | un
     ...base,
     ...overrides,
     baseBranch: overrides?.baseBranch || defaultBranch || base.baseBranch,
+    orca: overrides?.orca ? { ...base.orca, ...overrides.orca } : base.orca,
     agents: { ...base.agents, ...(overrides?.agents || {}) },
     providers: { ...base.providers, ...(overrides?.providers || {}) },
   };

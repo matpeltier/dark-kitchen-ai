@@ -23,7 +23,7 @@ export type SupervisorDependencies = {
 export function defaultDependencies(root: string, config: FactoryConfig): SupervisorDependencies {
   return {
     github: new GitHubClient(runCommand),
-    orca: new OrcaClient(config.orcaCommand, runCommand),
+    orca: new OrcaClient(config.orca, runCommand),
     store: new RuntimeStore(root),
     run: runCommand,
     sleep: (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),

@@ -33,4 +33,19 @@ describe("initialization helpers", () => {
     expect(await readFile(path.join(root, "AGENTS.md"), "utf8")).toContain("User instruction");
     expect(await readFile(path.join(root, ".gitignore"), "utf8")).toContain(".factory/runtime/");
   });
+
+  it("uses the configured Orca command and preserves argument order during registration", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "factory-orca-init-test-"));
+    const calls: Array<{ command: string; args: string[] }> = [];
+    await initializeRepository(root, {
+      config: { orca: { command: "node", args: ["/tmp/fake-orca.js"] } },
+      commit: false,
+      github: { repository: async () => ({ nameWithOwner: "test/repo", defaultBranch: "main" }), ensureLabels: async () => undefined },
+      run: async (command, args) => {
+        calls.push({ command, args });
+        return { code: 0, stdout: "", stderr: "" };
+      },
+    });
+    expect(calls).toContainEqual({ command: "node", args: ["/tmp/fake-orca.js", "repo", "add", "--path", root, "--json"] });
+  });
 });

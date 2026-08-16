@@ -71,6 +71,25 @@ npx dark-kitchen-ai doctor
 
 `init` only adds missing generated files and a managed section to `AGENTS.md`; unrelated project instructions are preserved.
 
+If Orca is exposed through a runtime or wrapper, configure the executable and its arguments explicitly:
+
+```bash
+npx dark-kitchen-ai init \
+  --orca-command node \
+  --orca-arg /path/to/orca-cli/index.js
+```
+
+The generated configuration is:
+
+```json
+"orca": {
+  "command": "node",
+  "args": ["/path/to/orca-cli/index.js"]
+}
+```
+
+Dark Kitchen AI invokes this as an argument array (`node /path/to/orca-cli/index.js status --json`); it does not use `sh -c` or concatenate a shell command. Existing V1 configurations containing `"orcaCommand": "..."` are accepted and migrated to V2 automatically the next time the configuration is loaded.
+
 ### Install the planning skill
 
 The repository and npm package include `skills/dark-kitchen-issues/`, a portable `SKILL.md` that teaches ChatGPT/Codex how to plan issues, use the four labels, create native dependency edges, avoid cycles, and resume human-blocked work.
@@ -149,13 +168,13 @@ Example:
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "maxParallelIssues": 3,
   "pollIntervalSeconds": 15,
   "autoMerge": true,
   "baseBranch": "main",
   "workflowCommand": "codex-workflow",
-  "orcaCommand": "orca-ide",
+  "orca": { "command": "orca-ide", "args": [] },
   "workflowFile": ".factory/workflows/issue.ts",
   "workflowConfig": ".factory/codex-workflow.config.ts",
   "maxWorkflowRetries": 1,

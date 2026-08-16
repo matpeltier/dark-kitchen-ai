@@ -1,11 +1,11 @@
 {
-  "version": 1,
+  "version": 2,
   "maxParallelIssues": 3,
   "pollIntervalSeconds": 15,
   "autoMerge": true,
   "baseBranch": "main",
   "workflowCommand": "codex-workflow",
-  "orcaCommand": "orca-ide",
+  "orca": { "command": "orca-ide", "args": [] },
   "workflowFile": ".factory/workflows/issue.ts",
   "workflowConfig": ".factory/codex-workflow.config.ts",
   "maxWorkflowRetries": 1,
