@@ -37,10 +37,19 @@ export function configTemplate(config: FactoryConfig): string {
   return `${JSON.stringify(config, null, 2)}\n`;
 }
 
-export const PROVIDER_CONFIG_TEMPLATE = `import factoryConfig from "./config.json" with { type: "json" };
+export const PROVIDER_CONFIG_TEMPLATE = `import { readFileSync } from "node:fs";
+import path from "node:path";
 
-// Provider names and role assignments live in .factory/config.json. Credentials are
-// read by codex-dynamic-workflows from the environment and never stored here.
+// Provider names and role assignments live in .factory/config.json. Read it from
+// disk because codex-workflow evaluates provider configs from a data URL, where a
+// relative JSON module import cannot be resolved. Credentials are still read by
+// codex-dynamic-workflows from the environment and never stored here.
+const configPath = process.env.FACTORY_CONFIG_PATH
+  ?? (process.cwd().endsWith(path.sep + ".factory")
+    ? path.join(process.cwd(), "config.json")
+    : path.join(process.cwd(), ".factory", "config.json"));
+const factoryConfig = JSON.parse(readFileSync(configPath, "utf8"));
+
 export default {
   providers: factoryConfig.providers,
   default: factoryConfig.agents.implementer,
