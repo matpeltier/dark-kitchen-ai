@@ -129,7 +129,7 @@ export class Supervisor {
       "--config", shellQuote(this.config.workflowConfig),
       "--args", shellQuote(args),
       "--json", "--no-progress",
-    ].join(" ");
+    ].join(" ") + "; exit $?";
   }
 
   private async processFinishedRun(record: RuntimeRecord): Promise<void> {
