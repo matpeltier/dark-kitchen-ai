@@ -23,7 +23,14 @@ export class GitHubClient {
   }
 
   async repository(): Promise<GitHubRepository> {
-    const result = await this.run("gh", this.args(["repo", "view", "--json", "nameWithOwner,defaultBranchRef"]));
+    const repositoryArgs = [
+      "repo",
+      "view",
+      ...(this.repo ? [this.repo] : []),
+      "--json",
+      "nameWithOwner,defaultBranchRef",
+    ];
+    const result = await this.run("gh", repositoryArgs);
     if (result.code !== 0) throw commandFailure(result);
     const data = parseJsonOutput<{ nameWithOwner: string; defaultBranchRef?: { name?: string } | null }>(result.stdout, "gh repo view");
     this.resolvedRepo = data.nameWithOwner;
