@@ -57,6 +57,22 @@ export class Supervisor {
     }
   }
 
+  async retry(issueNumber: number): Promise<void> {
+    const release = await this.deps.store.acquireLock();
+    try {
+      const issue = await this.deps.github.viewIssue(issueNumber);
+      const records = await this.deps.store.list();
+      const record = records.find((item) => item.issueNumber === issueNumber);
+      if (issue.labels.includes("factory:running") || record?.status === "running" || record?.status === "pr_open") {
+        throw new Error(`Issue #${issueNumber} already has an active Factory run`);
+      }
+      await this.deps.github.editLabels(issueNumber, [], ["factory:failed", "factory:needs-human"]);
+      await this.startIssue(issue, record);
+    } finally {
+      await release();
+    }
+  }
+
   async tick(): Promise<void> {
     const issues = await this.deps.github.listIssues();
     const graph = buildIssueGraph(issues);

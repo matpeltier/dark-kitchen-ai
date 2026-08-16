@@ -8,8 +8,6 @@ import { createProject, findRepoRoot, initializeRepository } from "./init.js";
 import { buildDashboard, renderDashboard } from "./status.js";
 import { defaultDependencies, Supervisor } from "./supervisor.js";
 import { RuntimeStore } from "./runtime-store.js";
-import { GitHubClient } from "./github.js";
-import { runCommand } from "./command.js";
 
 const program = new Command();
 program.name("factory").description("Keep a GitHub issue dependency graph moving through Orca and codex-dynamic-workflows").version("0.1.0");
@@ -95,13 +93,11 @@ program.command("retry")
     const config = await loadConfig(root);
     const issueNumber = Number(numberText);
     if (!Number.isInteger(issueNumber) || issueNumber < 1) throw new Error("Issue number must be a positive integer");
-    const github = new GitHubClient(runCommand);
-    const issue = await github.viewIssue(issueNumber);
-    if (!issue.labels.includes("factory:auto")) throw new Error(`Issue #${issueNumber} is not marked factory:auto`);
-    await github.editLabels(issueNumber, [], ["factory:failed", "factory:needs-human"]);
     const dependencies = defaultDependencies(root, config);
     const supervisor = new Supervisor(root, config, dependencies);
-    await supervisor.run(true);
+    const issue = await dependencies.github.viewIssue(issueNumber);
+    if (!issue.labels.includes("factory:auto")) throw new Error(`Issue #${issueNumber} is not marked factory:auto`);
+    await supervisor.retry(issueNumber);
   });
 
 async function printDoctor(cwd: string): Promise<void> {
