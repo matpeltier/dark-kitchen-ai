@@ -114,7 +114,6 @@ export type FactoryConfig = {
   orca: CommandSpec;
   workflowFile: string;
   workflowConfig: string;
-  maxWorkflowRetries: number;
   checkTimeoutSeconds: number;
   roles: Record<string, RoleConfig>;
   workflows: Record<string, WorkflowProfile>;
@@ -135,7 +134,6 @@ export const WorkerResultSchema = z.discriminatedUnion("status", [
       "requirement_impossible",
       "missing_access",
       "destructive_action",
-      "repeated_failure",
     ]),
     summary: z.string(),
     question: z.string(),
@@ -176,6 +174,8 @@ export type RuntimeRecord = {
   lastError?: string;
   resultPath: string;
   attempts?: string[];
+  nextRetryAt?: string;
+  transitionPending?: boolean;
 };
 
 export type OrcaWorktree = {

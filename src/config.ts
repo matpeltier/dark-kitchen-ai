@@ -49,7 +49,6 @@ const sharedConfigSchema = z.object({
   workflowCommand: z.string().min(1),
   workflowFile: z.string().min(1),
   workflowConfig: z.string().min(1),
-  maxWorkflowRetries: z.number().int().nonnegative(),
   checkTimeoutSeconds: z.number().int().positive(),
   providers: z.record(z.string(), providerSchema),
 });
@@ -88,7 +87,7 @@ const defaultRolePrompts: Record<string, string> = {
   designer: "Design a coherent, accessible, responsive solution. Respect the existing design system and document important UI decisions.",
   implementer: "Implement only the issue acceptance criteria. Make the smallest correct change and verify it.",
   reviewer: "Independently review correctness, regressions, acceptance criteria, and missing tests. Return actionable findings only.",
-  fixer: "Fix only blocking review findings. Make the smallest correct changes and rerun relevant verification.",
+  fixer: "Resolve every blocking review finding at its root cause. Inspect the surrounding subsystem for the same class of defect, preserve all acceptance criteria, rerun relevant tests/typecheck/lint/build, inspect the final diff adversarially, and commit the resulting changes. Do not request human input for routine engineering or debugging decisions.",
 };
 
 export function defaultConfig(): FactoryConfig {
@@ -98,7 +97,7 @@ export function defaultConfig(): FactoryConfig {
     designer: { provider: "architect", prompt: defaultRolePrompts.designer, skills: [] },
     implementer: { provider: "implementer", prompt: defaultRolePrompts.implementer },
     reviewer: { provider: "reviewer", prompt: defaultRolePrompts.reviewer },
-    fixer: { provider: "implementer", prompt: defaultRolePrompts.fixer },
+    fixer: { provider: "fixer", prompt: defaultRolePrompts.fixer },
   };
   return {
     version: 3,
@@ -113,7 +112,6 @@ export function defaultConfig(): FactoryConfig {
     },
     workflowFile: ".factory/workflows/issue.ts",
     workflowConfig: ".factory/codex-workflow.config.ts",
-    maxWorkflowRetries: 1,
     checkTimeoutSeconds: 1800,
     roles,
     workflows: {
@@ -124,6 +122,7 @@ export function defaultConfig(): FactoryConfig {
       architect: codex,
       implementer: { ...codex, reasoning: "medium" },
       reviewer: codex,
+      fixer: codex,
     },
   };
 }
@@ -140,7 +139,10 @@ export async function loadConfig(root: string): Promise<FactoryConfig> {
 
 export function normalizeConfig(raw: unknown): { config: FactoryConfig; migrated: boolean } {
   const current = factoryConfigSchema.safeParse(raw);
-  if (current.success) return { config: current.data as FactoryConfig, migrated: false };
+  if (current.success) {
+    const removedRetrySetting = typeof raw === "object" && raw !== null && "maxWorkflowRetries" in raw;
+    return { config: current.data as FactoryConfig, migrated: removedRetrySetting };
+  }
 
   const v2 = v2ConfigSchema.safeParse(raw);
   if (v2.success) return { config: migrateLegacy(v2.data, v2.data.orca), migrated: true };

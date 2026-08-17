@@ -1,6 +1,6 @@
 import path from "node:path";
 import { commandFailure, runCommand } from "./command.js";
-import { buildIssueGraph, computeReadyIssues } from "./graph.js";
+import { buildIssueGraph, computeReadyIssues, isOpen } from "./graph.js";
 import { GitHubClient } from "./github.js";
 import { notify } from "./notifications.js";
 import { OrcaClient } from "./orca.js";
@@ -83,9 +83,12 @@ export class Supervisor {
     }
 
     const records = await this.deps.store.list();
-    for (const record of records.filter((item) => item.status === "running" && item.terminalHandle)) {
+    await this.processPendingTransitions(records);
+    await this.processScheduledRetries(records);
+    for (const record of records.filter((item) => item.status === "running")) {
       await this.processFinishedRun(record);
     }
+    if (await this.deps.store.stopRequested()) return;
 
     const refreshedIssues = await this.deps.github.listIssues();
     const refreshedGraph = buildIssueGraph(refreshedIssues);
@@ -105,9 +108,10 @@ export class Supervisor {
 
   private async startIssue(issue: GitHubIssue, existing?: RuntimeRecord): Promise<void> {
     await this.deps.github.editLabels(issue.number, [DARK_KITCHEN_LABEL.running], [DARK_KITCHEN_LABEL.failed]);
+    let worktree: OrcaWorktree | undefined;
+    let branch = existing?.branch || "";
+    let terminalHandle: string | undefined;
     try {
-      let worktree: OrcaWorktree;
-      let branch = existing?.branch || "";
       if (existing?.worktreeId && existing.worktreePath) {
         worktree = { id: existing.worktreeId, path: existing.worktreePath, branch: existing.branch };
         await this.prepareRetry(worktree.path);
@@ -120,6 +124,7 @@ export class Supervisor {
       const input = this.workflowInput(issue);
       await this.deps.store.writeInput(issue.number, input);
       const terminal = await this.deps.orca.createTerminal(worktree.id, `Dark Kitchen AI #${issue.number}`, this.workflowCommand(input));
+      terminalHandle = terminal.handle;
       const now = new Date().toISOString();
       const record: RuntimeRecord = {
         issueNumber: issue.number,
@@ -131,13 +136,30 @@ export class Supervisor {
         worktreeId: worktree.id,
         worktreePath: worktree.path,
         branch,
-        terminalHandle: terminal.handle,
+        terminalHandle,
         resultPath: this.deps.store.resultPath(issue.number),
         attempts: existing?.attempts ?? [],
+        nextRetryAt: undefined,
       };
       await this.deps.store.save(record);
     } catch (error) {
-      await this.permanentFailure(issue, `Could not start Orca/workflow: ${errorMessage(error)}`);
+      const message = `Could not start Orca/workflow: ${errorMessage(error)}`;
+      const now = new Date().toISOString();
+      const failedRecord: RuntimeRecord = {
+        issueNumber: issue.number,
+        issueTitle: issue.title,
+        status: "failed",
+        attempt: (existing?.attempt ?? 0) + 1,
+        startedAt: existing?.startedAt ?? now,
+        updatedAt: now,
+        worktreeId: worktree?.id ?? existing?.worktreeId ?? "",
+        worktreePath: worktree?.path ?? existing?.worktreePath ?? this.root,
+        branch: branch || worktree?.branch || "",
+        terminalHandle,
+        resultPath: this.deps.store.resultPath(issue.number),
+        attempts: [...(existing?.attempts ?? []), message],
+      };
+      await this.handleFailureRecord(issue, failedRecord, message);
     }
   }
 
@@ -164,7 +186,13 @@ export class Supervisor {
   }
 
   private async processFinishedRun(record: RuntimeRecord): Promise<void> {
-    if (!record.terminalHandle || !(await this.deps.orca.terminalFinished(record.terminalHandle))) return;
+    if (record.terminalHandle) {
+      try {
+        if (!(await this.deps.orca.terminalFinished(record.terminalHandle))) return;
+      } catch {
+        // An unavailable terminal is treated as finished so a stale run can recover.
+      }
+    }
     let result: WorkerResult | undefined;
     try { result = await this.deps.store.readResult(record.issueNumber); } catch (error) {
       await this.handleFailure(record, errorMessage(error));
@@ -182,6 +210,7 @@ export class Supervisor {
   private async completeSuccess(record: RuntimeRecord, result: Extract<WorkerResult, { status: "success" }>): Promise<void> {
     const issue = await this.deps.github.viewIssue(record.issueNumber);
     let merged = false;
+    let mergedPullRequest: { number: number; url: string } | undefined;
     try {
       await this.verifyWorktree(record);
       const push = await this.deps.run("git", ["push", "--set-upstream", "origin", record.branch], { cwd: record.worktreePath });
@@ -192,6 +221,7 @@ export class Supervisor {
         `[Dark Kitchen AI] #${issue.number} ${issue.title}`,
         `## Summary\n${result.summary}\n\n## Tests\n${result.tests.map((test) => `- ${test}`).join("\n")}\n\n## Review\n${result.reviewSummary}\n\nCloses #${issue.number}`,
       );
+      mergedPullRequest = pullRequest;
       const checks = await this.deps.github.waitForChecks(pullRequest.number, this.config.checkTimeoutSeconds * 1000);
       if (!checks.passed) throw new Error(`PR checks failed or timed out: ${checks.output}`);
       const checkSummary = checks.noChecks ? "No GitHub checks configured; local workflow tests were the available gate." : "GitHub checks passed.";
@@ -205,10 +235,22 @@ export class Supervisor {
       if (!(await this.deps.github.issueIsClosed(issue.number))) await this.deps.github.closeIssue(issue.number);
       if (!(await this.deps.github.issueIsClosed(issue.number))) throw new Error(`Issue #${issue.number} did not close after merging PR #${pullRequest.number}`);
       await this.deps.github.editLabels(issue.number, [], [DARK_KITCHEN_LABEL.running, DARK_KITCHEN_LABEL.failed, DARK_KITCHEN_LABEL.needsHuman]);
-      await this.saveRecord({ ...record, status: "completed", pullRequestNumber: pullRequest.number, pullRequestUrl: pullRequest.url, checkSummary, updatedAt: new Date().toISOString() });
-      await this.removeWorktreeBestEffort(record);
+      const completedRecord: RuntimeRecord = { ...record, status: "completed", pullRequestNumber: pullRequest.number, pullRequestUrl: pullRequest.url, checkSummary, updatedAt: new Date().toISOString(), nextRetryAt: undefined, transitionPending: undefined };
+      await this.saveRecord(completedRecord);
+      await this.removeWorktreeBestEffort(completedRecord);
     } catch (error) {
-      if (merged) await this.permanentFailure(issue, `PR merged but Dark Kitchen AI could not complete the issue transition: ${errorMessage(error)}`, record, [errorMessage(error)]);
+      if (merged && mergedPullRequest) {
+        await this.saveRecord({
+          ...record,
+          status: "pr_open",
+          pullRequestNumber: mergedPullRequest.number,
+          pullRequestUrl: mergedPullRequest.url,
+          lastError: `PR merged; final issue transition will be retried: ${errorMessage(error)}`,
+          updatedAt: new Date().toISOString(),
+          transitionPending: true,
+        });
+        await this.deps.github.removeLabel(issue.number, DARK_KITCHEN_LABEL.running);
+      }
       else await this.handleFailure(record, errorMessage(error));
     }
   }
@@ -233,26 +275,59 @@ export class Supervisor {
     ].join("\n");
     await this.deps.github.editLabels(record.issueNumber, [DARK_KITCHEN_LABEL.needsHuman], [DARK_KITCHEN_LABEL.running]);
     await this.deps.github.comment(record.issueNumber, body);
-    await this.saveRecord({ ...record, status: "needs_human", updatedAt: new Date().toISOString(), lastError: result.summary });
+    await this.saveRecord({ ...record, status: "needs_human", updatedAt: new Date().toISOString(), lastError: result.summary, nextRetryAt: undefined });
     await this.notify("Dark Kitchen AI needs human input", `Issue #${record.issueNumber}: ${result.question}`);
   }
 
   private async handleFailure(record: RuntimeRecord, message: string): Promise<void> {
     const issue = await this.deps.github.viewIssue(record.issueNumber);
     const attempts = [...(record.attempts ?? []), message];
-    if (record.attempt <= this.config.maxWorkflowRetries) {
-      await this.saveRecord({ ...record, status: "failed", attempts, updatedAt: new Date().toISOString(), lastError: message });
-      await this.startIssue(issue, { ...record, status: "failed", attempts });
-      return;
-    }
-    await this.permanentFailure(issue, message, record, attempts);
+    await this.handleFailureRecord(issue, { ...record, status: "failed", attempts }, message);
   }
 
-  private async permanentFailure(issue: GitHubIssue, message: string, record?: RuntimeRecord, attempts: string[] = []): Promise<void> {
+  private async handleFailureRecord(issue: GitHubIssue, record: RuntimeRecord, message: string): Promise<void> {
+    const nextRetryAt = new Date(Date.now() + this.retryDelayMs(record.attempt)).toISOString();
     await this.deps.github.editLabels(issue.number, [DARK_KITCHEN_LABEL.failed], [DARK_KITCHEN_LABEL.running]);
-    await this.deps.github.comment(issue.number, `## Dark Kitchen AI worker failed\n\n${message}\n\nAttempts:\n${attempts.map((attempt) => `- ${attempt}`).join("\n") || "- 1 workflow attempt"}\n\nThe Orca worktree is preserved for inspection.`);
-    if (record) await this.saveRecord({ ...record, status: "failed", attempts, updatedAt: new Date().toISOString(), lastError: message });
-    await this.notify("Dark Kitchen AI worker failed", `Issue #${issue.number}: ${message}`);
+    await this.saveRecord({
+      ...record,
+      status: "failed",
+      attempts: record.attempts ?? [],
+      updatedAt: new Date().toISOString(),
+      lastError: message,
+      nextRetryAt,
+    });
+  }
+
+  private async processScheduledRetries(records: RuntimeRecord[]): Promise<void> {
+    if (await this.deps.store.stopRequested()) return;
+    const now = Date.now();
+    for (const record of records.filter((item) => item.status === "failed" && (!item.nextRetryAt || Date.parse(item.nextRetryAt) <= now))) {
+      if (await this.deps.store.stopRequested()) return;
+      const issue = await this.deps.github.viewIssue(record.issueNumber);
+      if (!isOpen(issue) || !issue.labels.includes(DARK_KITCHEN_LABEL.auto) || issue.labels.includes(DARK_KITCHEN_LABEL.needsHuman)) continue;
+      await this.startIssue(issue, record);
+    }
+  }
+
+  private async processPendingTransitions(records: RuntimeRecord[]): Promise<void> {
+    for (const record of records.filter((item) => item.status === "pr_open" && item.transitionPending && item.pullRequestNumber)) {
+      const issue = await this.deps.github.viewIssue(record.issueNumber);
+      try {
+        if (!(await this.deps.github.issueIsClosed(issue.number))) await this.deps.github.closeIssue(issue.number);
+        if (!(await this.deps.github.issueIsClosed(issue.number))) throw new Error(`Issue #${issue.number} did not close after merged PR #${record.pullRequestNumber}`);
+        await this.deps.github.editLabels(issue.number, [], [DARK_KITCHEN_LABEL.running, DARK_KITCHEN_LABEL.failed, DARK_KITCHEN_LABEL.needsHuman]);
+        const completedRecord: RuntimeRecord = { ...record, status: "completed", updatedAt: new Date().toISOString(), lastError: undefined, transitionPending: undefined };
+        await this.saveRecord(completedRecord);
+        await this.removeWorktreeBestEffort(completedRecord);
+      } catch (error) {
+        await this.saveRecord({ ...record, updatedAt: new Date().toISOString(), lastError: `PR merged; final issue transition will be retried: ${errorMessage(error)}` });
+      }
+    }
+  }
+
+  private retryDelayMs(attempt: number): number {
+    const multiplier = Math.min(16, Math.max(1, attempt));
+    return Math.min(300_000, this.config.pollIntervalSeconds * 1_000 * multiplier);
   }
 
   private async verifyWorktree(record: RuntimeRecord): Promise<void> {

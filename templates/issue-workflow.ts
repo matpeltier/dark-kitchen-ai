@@ -38,6 +38,13 @@ const factoryConfig = JSON.parse(await readFile(configPath, "utf8")) as {
   workflows: Record<string, WorkflowProfile>;
 };
 
+const HUMAN_CATEGORIES = [
+  "requirement_ambiguity",
+  "requirement_impossible",
+  "missing_access",
+  "destructive_action",
+];
+
 // codex-dynamic-workflows injects agent(), phase(), and args into this script.
 const issue = args as {
   number: number;
@@ -52,7 +59,7 @@ const IMPLEMENTATION_SCHEMA = {
   properties: {
     status: { type: "string", enum: ["success", "needs_human"] },
     summary: { type: "string" }, question: { type: "string" },
-    category: { type: "string" }, recommendation: { type: "string" },
+    category: { type: "string", enum: HUMAN_CATEGORIES }, recommendation: { type: "string" },
     tests: { type: "array", items: { type: "string" } },
   },
   required: ["status", "summary", "tests"],
@@ -72,7 +79,7 @@ const FIX_SCHEMA = {
   properties: {
     status: { type: "string", enum: ["fixed", "needs_human"] },
     summary: { type: "string" }, question: { type: "string" },
-    category: { type: "string" }, recommendation: { type: "string" },
+    category: { type: "string", enum: HUMAN_CATEGORIES }, recommendation: { type: "string" },
   },
   required: ["status", "summary"],
 };
@@ -184,7 +191,7 @@ try {
       phase("Architecture / design");
       const plan = await runRole(
         planRole,
-        `Read AGENTS.md and issue #${issue.number}: ${issue.title}\n\n${issue.body}\n\nPlan the smallest implementation that satisfies the stated acceptance criteria. Do not invent product requirements. If materially ambiguous or impossible, return a human blocker with a concrete question.`,
+        `Read AGENTS.md and issue #${issue.number}: ${issue.title}\n\n${issue.body}\n\nPlan the smallest implementation that satisfies the stated acceptance criteria. Do not invent product requirements. Return needs_human only for a materially ambiguous or impossible requirement, missing access, or an action requiring explicit destructive approval.`,
         "Architecture / design",
         IMPLEMENTATION_SCHEMA,
       );
@@ -201,7 +208,7 @@ try {
       phase("Implementation");
       const implementation = await runRole(
         implementationRole,
-        `You are the implementation owner for GitHub issue #${issue.number}: ${issue.title}.\n\nIssue body and acceptance criteria:\n${issue.body}\n\nArchitecture/design context:\n${architecture}\n\nRead AGENTS.md and inspect the repository. Implement only this issue. Run relevant tests, lint, and typecheck where configured. Do not change product requirements, launch other issues, or ask about routine coding/debugging choices. Before reporting success, inspect the final diff and commit meaningful changes on the current branch. If a genuinely ambiguous/impossible requirement, missing credential, destructive approval, or repeated failure blocks the work, return needs_human with a precise question and evidence.`,
+        `You are the implementation owner for GitHub issue #${issue.number}: ${issue.title}.\n\nOriginal issue and acceptance criteria:\n${issue.body}\n\nArchitecture/design context:\n${architecture}\n\nRead AGENTS.md and inspect the repository. Implement only this issue. Run relevant tests, lint, and typecheck where configured. Do not change product requirements, launch other issues, or ask about routine coding/debugging choices. Before reporting success, inspect the final diff and commit meaningful changes on the current branch. Return needs_human only when a product decision, missing access/credential, impossible requirement, or explicit destructive approval is genuinely required. Tests, build failures, review findings, crashes, timeouts, and difficult debugging are engineering failures and must remain failed so the supervisor can retry.`,
         "Implementation",
         IMPLEMENTATION_SCHEMA,
       );
@@ -212,12 +219,13 @@ try {
       } else {
         let reviewSummary = reviewRole ? "No blocking review findings." : "No review role configured.";
         let tests = implementation.tests;
-        let unresolved: string[] = [];
-        for (let loop = 0; reviewRole && loop < 2; loop += 1) {
+        const maxFixLoops = 2;
+        let finalReviewPassed = !reviewRole;
+        for (let reviewPass = 0; reviewRole; reviewPass += 1) {
           phase("Independent review");
           const review = await runRole(
             reviewRole,
-            `Independently review issue #${issue.number} and the current worktree. Read the issue, AGENTS.md, git diff, committed changes, and test results. Check every acceptance criterion, correctness, regressions, and missing tests. Do not rewrite code in this review session. Return only actionable blocking findings.`,
+            `Independently review issue #${issue.number} and the current preserved worktree. Read the original issue and acceptance criteria, AGENTS.md, git diff, committed changes, and test results. Check every acceptance criterion, correctness, regressions, and missing tests. Do not rewrite code in this review session. Return only actionable blocking findings. Review the current implementation independently from the implementer and fixer sessions.`,
             "Independent review",
             REVIEW_SCHEMA,
           );
@@ -226,16 +234,22 @@ try {
             break;
           }
           reviewSummary = review.summary;
-          unresolved = review.findings;
-          if (!review.hasBlockingFindings) break;
+          if (!review.hasBlockingFindings) {
+            finalReviewPassed = true;
+            break;
+          }
           if (!fixRole) {
-            finalResult = { status: "needs_human", category: "repeated_failure", summary: "Blocking review findings exist but this workflow has no fix role.", question: "Should a fixer role be added or should the findings be resolved manually?", recommendation: "Configure fixRole for this workflow profile.", evidence: review.findings };
+            finalResult = { status: "failed", summary: "Blocking review findings remain but this workflow has no fix role.", attempts: review.findings };
+            break;
+          }
+          if (reviewPass >= maxFixLoops) {
+            finalResult = { status: "failed", summary: `Blocking review findings remain after ${maxFixLoops} fix loops and a final independent review.`, attempts: review.findings };
             break;
           }
           phase("Fix and reverify");
           const fixed = await runRole(
             fixRole,
-            `Fix the blocking review findings for issue #${issue.number}. Findings:\n- ${review.findings.join("\n- ")}\n\nMake the smallest correct changes, rerun relevant tests, inspect the diff, and commit the fix. Do not ask about routine debugging. If a finding exposes a real product blocker, return needs_human.`,
+            `You are the fixer for issue #${issue.number}. Continue in the existing preserved task worktree; do not restart the implementation from scratch.\n\nOriginal issue and acceptance criteria:\n${issue.body}\n\nCurrent implementation and reviewer findings:\n- ${review.findings.join("\n- ")}\n\nResolve every blocking finding at its root cause, not merely the reported line. Inspect the surrounding subsystem for the same class of defect, verify that the fix preserves every acceptance criterion, rerun relevant tests/typecheck/lint/build, inspect the final diff adversarially, and commit the resulting changes. Do not ask for human input for routine engineering or debugging decisions. Return needs_human only for a genuine product decision, missing access/credential, impossible requirement, or explicit destructive approval.`,
             "Fix and reverify",
             FIX_SCHEMA,
           );
@@ -248,11 +262,9 @@ try {
             break;
           }
           tests = [...tests, fixed.summary];
-          if (loop === 1) {
-            finalResult = { status: "needs_human", category: "repeated_failure", summary: "The independent review still has blocking findings after two fix loops.", question: "How should the remaining review findings be resolved?", recommendation: "Review the preserved worktree and choose the intended behavior.", evidence: unresolved };
-          }
         }
-        if (!finalResult) finalResult = { status: "success", summary: implementation.summary, tests, reviewSummary };
+        if (!finalResult && finalReviewPassed) finalResult = { status: "success", summary: implementation.summary, tests, reviewSummary };
+        if (!finalResult) finalResult = { status: "failed", summary: "The bounded review/fix workflow did not reach a verified result.", attempts: ["Review/fix orchestration ended without a passing final review."] };
       }
     }
   }
