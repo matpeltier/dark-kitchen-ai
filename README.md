@@ -143,7 +143,7 @@ Only these labels have runtime meaning:
 | `dark-kitchen:auto` | The supervisor may launch the issue. |
 | `dark-kitchen:running` | A workflow currently owns the issue. |
 | `dark-kitchen:needs-human` | A genuine product, access, destructive-action, or repeated-failure blocker needs you. |
-| `dark-kitchen:failed` | The bounded worker retry was exhausted. |
+| `dark-kitchen:failed` | The latest autonomous attempt failed; the supervisor preserves the worktree and schedules another attempt. |
 
 No `dark-kitchen:auto` means Dark Kitchen AI leaves the issue alone. Labels are created idempotently by `init` and `create`.
 
@@ -177,7 +177,6 @@ Example:
   "orca": { "command": "orca-ide", "args": [] },
   "workflowFile": ".factory/workflows/issue.ts",
   "workflowConfig": ".factory/codex-workflow.config.ts",
-  "maxWorkflowRetries": 1,
   "checkTimeoutSeconds": 1800,
   "roles": {
     "designer": {
@@ -197,8 +196,8 @@ Example:
       "prompt": "Review correctness, regressions, and missing tests."
     },
     "fixer": {
-      "provider": "implementer",
-      "prompt": "Fix only blocking review findings."
+      "provider": "fixer",
+      "prompt": "Resolve every blocking review finding at its root cause and verify the surrounding subsystem."
     }
   },
   "workflows": {
@@ -222,7 +221,8 @@ Example:
   "providers": {
     "architect": { "backend": "codex", "model": "YOUR_CURRENT_CODEX_MODEL", "reasoning": "high" },
     "implementer": { "backend": "codex", "model": "YOUR_CURRENT_CODEX_MODEL", "reasoning": "medium" },
-    "reviewer": { "backend": "codex", "model": "YOUR_CURRENT_CODEX_MODEL", "reasoning": "high" }
+    "reviewer": { "backend": "codex", "model": "YOUR_CURRENT_CODEX_MODEL", "reasoning": "high" },
+    "fixer": { "backend": "codex", "model": "YOUR_CURRENT_STRONG_FIXER_MODEL", "reasoning": "high" }
   }
 }
 ```
@@ -276,7 +276,7 @@ Other valid statuses are `needs_human` and `failed`. The supervisor never decide
 
 ## Human escalation and resume
 
-Routine bugs, failing tests, implementation choices, and normal debugging stay with the worker. Escalation is reserved for materially ambiguous requirements, impossible requirements, unavailable access, destructive actions, or repeated reasonable failure.
+Routine bugs, failing tests, implementation choices, review findings, crashes, timeouts, and normal debugging stay with the worker. Escalation is reserved for materially ambiguous requirements, impossible requirements, unavailable access, or destructive actions requiring explicit approval.
 
 When escalation happens, Dark Kitchen AI:
 
@@ -293,7 +293,7 @@ Return to ChatGPT, update the requirement/dependencies, and remove `dark-kitchen
 npx dark-kitchen-ai retry 7
 ```
 
-For a failed issue, inspect the preserved worktree and GitHub comment first. `retry` starts a fresh workflow rather than trusting stale model context.
+Technical failures are retried indefinitely with bounded backoff in the same preserved worktree and branch. `retry` remains available for an explicit immediate retry after inspecting the current state; every retry rereads the current issue rather than trusting stale model context.
 
 ## Merge gate and safety
 

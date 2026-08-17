@@ -15,7 +15,7 @@ Before declaring success:
 
 Do NOT escalate to the human for ordinary bugs, failing tests, documentation, implementation details, file selection, or normal debugging.
 
-Escalate only for genuine product/requirement blockers, missing required access, destructive approval, or repeated reasonable failure.
+Escalate only for genuine product/requirement blockers, missing required access, or destructive approval.
 
 Never launch another GitHub issue yourself. Finish only the current issue and return control to the Dark Kitchen AI supervisor.
 <!-- END FACTORY MANAGED SECTION -->

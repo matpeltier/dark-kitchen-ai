@@ -8,7 +8,6 @@
   "orca": { "command": "orca-ide", "args": [] },
   "workflowFile": ".factory/workflows/issue.ts",
   "workflowConfig": ".factory/codex-workflow.config.ts",
-  "maxWorkflowRetries": 1,
   "checkTimeoutSeconds": 1800,
   "roles": {
     "architect": {
@@ -29,8 +28,8 @@
       "prompt": "Independently review correctness, regressions, acceptance criteria, and missing tests. Return actionable findings only."
     },
     "fixer": {
-      "provider": "implementer",
-      "prompt": "Fix only blocking review findings. Make the smallest correct changes and rerun relevant verification."
+      "provider": "fixer",
+      "prompt": "Resolve every blocking review finding at its root cause. Inspect the surrounding subsystem for the same class of defect, preserve all acceptance criteria, rerun relevant tests/typecheck/lint/build, inspect the final diff adversarially, and commit the resulting changes. Do not request human input for routine engineering or debugging decisions."
     }
   },
   "workflows": {
@@ -55,6 +54,7 @@
   "providers": {
     "architect": { "backend": "codex", "model": "gpt-5.6-luna", "reasoning": "high" },
     "implementer": { "backend": "codex", "model": "gpt-5.6-luna", "reasoning": "medium" },
-    "reviewer": { "backend": "codex", "model": "gpt-5.6-luna", "reasoning": "high" }
+    "reviewer": { "backend": "codex", "model": "gpt-5.6-luna", "reasoning": "high" },
+    "fixer": { "backend": "codex", "model": "gpt-5.6-luna", "reasoning": "high" }
   }
 }

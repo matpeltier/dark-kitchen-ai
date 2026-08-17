@@ -26,8 +26,7 @@ Escalate only when genuinely blocked by:
 - an ambiguous product requirement where multiple materially different behaviors are valid,
 - a requirement that appears impossible,
 - required credentials/access unavailable to the agent,
-- a destructive or irreversible action requiring approval,
-- repeated failure after multiple reasonable attempts.
+  - a destructive or irreversible action requiring approval.
 
 Never launch another GitHub issue yourself.
 Finish only the current issue and return control to the Dark Kitchen AI supervisor.

@@ -12,7 +12,7 @@ function makeIssue(number: number, blockedBy: number[] = []): GitHubIssue {
   return { number, title: `Issue ${number}`, body: "Implement it", state: "OPEN", labels: ["dark-kitchen:auto"], blockedBy: blockedBy.map((value) => ({ number: value })), blocking: [] };
 }
 
-async function fixture(initialIssues: GitHubIssue[], options: { maxParallelIssues?: number; retries?: number } = {}) {
+async function fixture(initialIssues: GitHubIssue[], options: { maxParallelIssues?: number; pollIntervalSeconds?: number } = {}) {
   const root = await mkdtemp(path.join(tmpdir(), "factory-test-"));
   const issues = initialIssues.map((item) => ({ ...item, labels: [...item.labels], blockedBy: [...item.blockedBy] }));
   const events: string[] = [];
@@ -35,10 +35,14 @@ async function fixture(initialIssues: GitHubIssue[], options: { maxParallelIssue
   } satisfies GitHubPort;
   let terminalFinished = false;
   let terminalCount = 0;
+  let worktreeCount = 0;
   const terminalCommands: string[] = [];
   const orca = {
     ensureRepo: async (repoPath: string): Promise<OrcaRepo> => ({ id: "repo-1", path: repoPath }),
-    createWorktree: async (_repo: OrcaRepo, name: string): Promise<OrcaWorktree> => ({ id: `repo-1::${root}/${name}`, path: root, branch: name }),
+    createWorktree: async (_repo: OrcaRepo, name: string): Promise<OrcaWorktree> => {
+      worktreeCount += 1;
+      return { id: `repo-1::${root}/${name}`, path: root, branch: name };
+    },
     createTerminal: async (_worktreeId: string, _title: string, command: string): Promise<{ handle: string }> => {
       terminalCommands.push(command);
       return { handle: `terminal-${++terminalCount}` };
@@ -52,10 +56,10 @@ async function fixture(initialIssues: GitHubIssue[], options: { maxParallelIssue
     if (args[0] === "branch") return { code: 0, stdout: "issue-1\n", stderr: "" };
     return { code: 0, stdout: "", stderr: "" };
   };
-  const config = { ...defaultConfig(), maxParallelIssues: options.maxParallelIssues ?? 2, maxWorkflowRetries: options.retries ?? 0 };
+  const config = { ...defaultConfig(), maxParallelIssues: options.maxParallelIssues ?? 2, pollIntervalSeconds: options.pollIntervalSeconds ?? 15 };
   const store = new RuntimeStore(root);
   const deps: SupervisorDependencies = { github, orca, store, run: command, sleep: async () => undefined, notify: async (_title, message) => events.push(`notify:${message}`) };
-  return { root, issues, events, github, orca, store, deps, config, terminalCommands, setFinished: (value: boolean) => { terminalFinished = value; } };
+  return { root, issues, events, github, orca, store, deps, config, terminalCommands, getWorktreeCount: () => worktreeCount, setFinished: (value: boolean) => { terminalFinished = value; } };
 }
 
 describe("Dark Kitchen AI supervisor", () => {
@@ -136,6 +140,69 @@ describe("Dark Kitchen AI supervisor", () => {
     expect((await readJson<{ body: string }>(test.store.inputPath(1))).body).toBe(test.issues[0].body);
     expect(test.terminalCommands).toHaveLength(2);
     expect(test.terminalCommands[1]).not.toContain(test.issues[0].body);
+  });
+
+  it("retries technical workflow failures indefinitely on the same worktree", async () => {
+    const test = await fixture([makeIssue(1)], { pollIntervalSeconds: 0 });
+    const supervisor = new Supervisor(test.root, test.config, test.deps);
+
+    await supervisor.run(true);
+    test.setFinished(true);
+    for (let failure = 0; failure < 3; failure += 1) {
+      await writeJson(test.store.resultPath(1), { status: "failed", summary: `engineering failure ${failure}`, attempts: [`failure ${failure}`] });
+      await supervisor.tick();
+      expect((await test.store.get(1))?.status).toBe("failed");
+      await supervisor.tick();
+      expect((await test.store.get(1))?.status).toBe("running");
+    }
+
+    expect((await test.store.get(1))?.attempt).toBe(4);
+    expect(test.getWorktreeCount()).toBe(1);
+    expect(test.events.some((event) => event.startsWith("notify:"))).toBe(false);
+  });
+
+  it("reconciles a stale running record with a finished failed result", async () => {
+    const test = await fixture([makeIssue(1)], { pollIntervalSeconds: 0 });
+    const record: RuntimeRecord = { issueNumber: 1, issueTitle: "Issue 1", status: "running", attempt: 2, startedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), worktreeId: "repo-1::worktree-1", worktreePath: test.root, branch: "issue-1", terminalHandle: "terminal-1", resultPath: test.store.resultPath(1) };
+    await test.store.save(record);
+    await writeJson(test.store.resultPath(1), { status: "failed", summary: "stale worker failure", attempts: ["worker exited"] });
+    test.setFinished(true);
+
+    const supervisor = new Supervisor(test.root, test.config, test.deps);
+    await supervisor.tick();
+    expect((await test.store.get(1))?.status).toBe("failed");
+    expect(test.issues[0].labels).not.toContain("dark-kitchen:running");
+    await supervisor.tick();
+    expect((await test.store.get(1))?.status).toBe("running");
+    expect((await test.store.get(1))?.attempt).toBe(3);
+    expect(test.getWorktreeCount()).toBe(0);
+  });
+
+  it("recovers a running record with no live terminal or result", async () => {
+    const test = await fixture([makeIssue(1)], { pollIntervalSeconds: 0 });
+    const record: RuntimeRecord = { issueNumber: 1, issueTitle: "Issue 1", status: "running", attempt: 1, startedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), worktreeId: "repo-1::worktree-1", worktreePath: test.root, branch: "issue-1", terminalHandle: "terminal-1", resultPath: test.store.resultPath(1) };
+    await test.store.save(record);
+    test.setFinished(true);
+
+    const supervisor = new Supervisor(test.root, test.config, test.deps);
+    await supervisor.tick();
+    expect((await test.store.get(1))?.status).toBe("failed");
+    await supervisor.tick();
+    expect((await test.store.get(1))?.status).toBe("running");
+    expect((await test.store.get(1))?.attempt).toBe(2);
+  });
+
+  it("does not launch a scheduled retry after an explicit stop request", async () => {
+    const test = await fixture([makeIssue(1)], { pollIntervalSeconds: 0 });
+    const supervisor = new Supervisor(test.root, test.config, test.deps);
+    await supervisor.run(true);
+    test.setFinished(true);
+    await writeJson(test.store.resultPath(1), { status: "failed", summary: "test failure", attempts: ["test failure"] });
+    await supervisor.tick();
+    await test.store.requestStop();
+    await supervisor.tick();
+    expect((await test.store.get(1))?.status).toBe("failed");
+    expect(test.terminalCommands).toHaveLength(1);
   });
 
   it("escalates one issue without stopping an unrelated ready issue", async () => {
