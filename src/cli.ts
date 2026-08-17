@@ -13,7 +13,7 @@ import { bundledSkillPath, installSkill } from "./skill.js";
 import type { FactoryConfig } from "./types.js";
 
 const program = new Command();
-program.name("dark-kitchen-ai").alias("dka").description("Keep a GitHub issue dependency graph moving through Orca and codex-dynamic-workflows").version("0.1.0");
+program.name("dark-kitchen-ai").alias("dka").description("Keep a GitHub issue dependency graph moving through Orca and codex-dynamic-workflows").version("0.2.0");
 
 program.command("create")
   .argument("<name>", "directory and GitHub repository name")

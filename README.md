@@ -168,7 +168,7 @@ Example:
 
 ```json
 {
-  "version": 2,
+  "version": 3,
   "maxParallelIssues": 3,
   "pollIntervalSeconds": 15,
   "autoMerge": true,
@@ -179,11 +179,45 @@ Example:
   "workflowConfig": ".factory/codex-workflow.config.ts",
   "maxWorkflowRetries": 1,
   "checkTimeoutSeconds": 1800,
-  "agents": {
-    "architect": "architect",
-    "implementer": "implementer",
-    "reviewer": "reviewer",
-    "fixer": "implementer"
+  "roles": {
+    "designer": {
+      "provider": "architect",
+      "model": "YOUR_CURRENT_DESIGN_MODEL",
+      "agentType": "designer",
+      "prompt": "Design a coherent, accessible, responsive solution.",
+      "skills": ["ui-design"],
+      "mcp": ["figma"]
+    },
+    "implementer": {
+      "provider": "implementer",
+      "prompt": "Implement only the issue acceptance criteria."
+    },
+    "reviewer": {
+      "provider": "reviewer",
+      "prompt": "Review correctness, regressions, and missing tests."
+    },
+    "fixer": {
+      "provider": "implementer",
+      "prompt": "Fix only blocking review findings."
+    }
+  },
+  "workflows": {
+    "default": {
+      "roles": ["architect", "implementer", "reviewer", "fixer"],
+      "plan": "auto",
+      "planRole": "architect",
+      "implementationRole": "implementer",
+      "reviewRole": "reviewer",
+      "fixRole": "fixer"
+    },
+    "design": {
+      "roles": ["designer", "implementer", "reviewer", "fixer"],
+      "plan": "always",
+      "planRole": "designer",
+      "implementationRole": "implementer",
+      "reviewRole": "reviewer",
+      "fixRole": "fixer"
+    }
   },
   "providers": {
     "architect": { "backend": "codex", "model": "YOUR_CURRENT_CODEX_MODEL", "reasoning": "high" },
@@ -193,9 +227,22 @@ Example:
 }
 ```
 
-The `agents` map assigns a workflow role to a named provider. The provider map is the one configurability axis intended for V0: use an expensive reasoning model for architecture/review and a cheaper backend for implementation/fixes if that makes sense for your account.
+`roles` defines precise subagents. Each role can choose a provider, override its model, add a role directive, and load project-local skills. `workflows` chooses which roles participate and assigns semantic slots such as planning, implementation, review, and fixing.
 
-The generated `.factory/codex-workflow.config.ts` adapts this JSON to the current workflow runtime. Edit `.factory/config.json`, not supervisor code, when changing role routing. `status` prints the active profile and `doctor` checks only the backends and environment variables actually referenced by that profile.
+Existing V1 and V2 `.factory/config.json` files are migrated automatically to V3 when loaded; their provider routing and Orca configuration are preserved.
+
+The PM selects a specialized profile in the issue body:
+
+```markdown
+## Dark Kitchen workflow
+profile: design
+```
+
+Without that block, the `default` profile is used. Unknown profiles become a human blocker instead of silently falling back. Keep provider names, model IDs, skill names, and MCP names in the committed project configuration; never put credentials, URLs, or shell commands in an issue.
+
+Skills are loaded from project-local locations in this order: `.factory/skills/<name>/SKILL.md`, `skills/<name>/SKILL.md`, `.agents/skills/<name>/SKILL.md`, and `.codex/skills/<name>/SKILL.md`. Dark Kitchen validates skill names and reports missing skills as `needs_human`.
+
+The generated `.factory/codex-workflow.config.ts` adapts this JSON to the current workflow runtime. Edit `.factory/config.json`, not supervisor code, when changing role routing. `status` prints the active role routing and `doctor` checks only the backends and environment variables actually referenced by configured roles.
 
 Example Pi provider shape:
 
@@ -213,9 +260,11 @@ Example Pi provider shape:
 
 Use the exact keys, endpoint, model ID, and environment variable required by your installed Pi/provider version. Never commit API keys. Codex providers generated for the validated Orca Linux environment use `danger-full-access` by default because that environment did not support the required sandbox mapping; if your machine supports it, set `"sandbox": "workspace-write"` in the provider entry and verify the result with `doctor`.
 
+The `mcp` field is an allowlist and role hint. The current codex-dynamic-workflows runtime does not register arbitrary MCP servers per subagent, so a role must only rely on MCP tools that are already exposed by its backend session. Dark Kitchen deliberately does not pretend that listing an MCP name creates a connection.
+
 ## Workflow and worker results
 
-The generated `.factory/workflows/issue.ts` is intentionally pragmatic. It gives the worker the issue JSON, repository instructions, and current code; asks it to implement and test; runs an independent review; and bounds fix/review loops to avoid recursive agent explosions.
+The generated `.factory/workflows/issue.ts` is a reusable role-based orchestrator. It resolves the issue's workflow profile, loads the selected role prompts and skills, optionally runs a designer/architect, implements, independently reviews, and bounds fix/review loops to avoid recursive agent explosions. The workflow file stays the same; the selected profile and issue context change its execution.
 
 The final result is validated against `.factory/result.schema.json`:
 

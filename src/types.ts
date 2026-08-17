@@ -76,8 +76,27 @@ export type ProviderConfig = {
   [key: string]: unknown;
 };
 
+export type RoleConfig = {
+  provider: string;
+  model?: string;
+  prompt?: string;
+  agentType?: string;
+  skills?: string[];
+  mcp?: string[];
+};
+
+export type WorkflowProfile = {
+  roles: string[];
+  plan?: "auto" | "always" | "never";
+  prompt?: string;
+  planRole?: string;
+  implementationRole?: string;
+  reviewRole?: string;
+  fixRole?: string;
+};
+
 export type FactoryConfig = {
-  version: 2;
+  version: 3;
   maxParallelIssues: number;
   pollIntervalSeconds: number;
   autoMerge: boolean;
@@ -88,12 +107,8 @@ export type FactoryConfig = {
   workflowConfig: string;
   maxWorkflowRetries: number;
   checkTimeoutSeconds: number;
-  agents: {
-    architect: string;
-    implementer: string;
-    reviewer: string;
-    fixer: string;
-  };
+  roles: Record<string, RoleConfig>;
+  workflows: Record<string, WorkflowProfile>;
   providers: Record<string, ProviderConfig>;
 };
 

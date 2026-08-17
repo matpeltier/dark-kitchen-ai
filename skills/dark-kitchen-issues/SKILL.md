@@ -29,6 +29,19 @@ Do not add `dark-kitchen:auto` when the requirement is materially ambiguous, des
 
 To resume a human-blocked issue, update the requirement or dependencies, then remove `dark-kitchen:needs-human` while leaving the issue open and marked `dark-kitchen:auto`. A fresh worker run will reread the issue; it must not rely on stale model context.
 
+## Select a specialized workflow
+
+Projects may define named workflow profiles and custom roles in `.factory/config.json`. Use the profile selector in the issue body when a task needs a specialized subagent, for example a design-focused workflow:
+
+```markdown
+## Dark Kitchen workflow
+profile: design
+```
+
+Only select profiles that exist in the project's configuration. Do not put provider names, model IDs, shell commands, API keys, skill paths, or MCP URLs in an issue. The profile owns those capabilities and keeps them reviewable in version control.
+
+Use a specialized profile when the issue genuinely needs a role such as a product designer, data-model reviewer, security auditor, or migration specialist. Keep the issue's acceptance criteria authoritative; the profile changes how the work is executed, not what the product must do.
+
 ## Plan a product discussion
 
 When the user describes a feature:

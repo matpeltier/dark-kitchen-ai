@@ -20,6 +20,7 @@ This repository contains the deliberately small V0 implementation of Dark Kitche
 5. PR/check/merge/close transitions and dependency rescans.
 6. Human escalation, macOS notifications, preserved worktrees, and retries.
 7. Bootstrap, packaging, open-source documentation, and focused tests.
+8. Role-based workflow profiles, custom prompts, project-local skills, and controlled issue profile selection.
 
 ## Compatibility rule
 
@@ -28,3 +29,5 @@ External CLIs evolve. Keep their command shapes in the small adapters under `src
 ## Deliberate boundaries
 
 No cloud service, MCP server, custom backlog database, remote execution, Kubernetes layer, or generic provider plugin system belongs in V0. Role-based routing remains first-class because cost/quality selection is part of the intended workflow, but it uses only the backends supported by the installed codex-dynamic-workflows runtime.
+
+Role customization is intentionally declarative: `.factory/config.json` owns providers, roles, prompts, skills, and workflow profiles; an issue may select an allowlisted profile with a `Dark Kitchen workflow` block. MCP names are carried as reviewed capability hints until the upstream workflow runtime supports per-subagent MCP registration.

@@ -84,9 +84,18 @@ export async function runDoctor(cwd: string): Promise<{ checks: DoctorCheck[]; o
       add(".factory/config.json", false, errorMessage(error));
     }
     add("AGENTS.md", await fileExistsAt(`${root}/AGENTS.md`), "managed Dark Kitchen AI rules are merged, not replacing user instructions");
+    if (config) {
+      for (const [role, roleConfig] of Object.entries(config.roles)) {
+        const missing = [];
+        for (const skill of roleConfig.skills ?? []) {
+          if (!(await skillExists(root, skill))) missing.push(skill);
+        }
+        add(`Skills (${role})`, missing.length === 0, missing.length ? `missing: ${missing.join(", ")}` : "configured skills are available");
+      }
+    }
   }
 
-  if (config) {
+  if (config && root) {
     const orcaAvailable = await commandAvailable(config.orca.command);
     add("Orca CLI", orcaAvailable, formatCommand(config.orca.command, config.orca.args));
     if (orcaAvailable) {
@@ -147,9 +156,9 @@ export async function runDoctor(cwd: string): Promise<{ checks: DoctorCheck[]; o
 }
 
 export function formatRouting(config: FactoryConfig): string {
-  return Object.entries(config.agents).map(([role, providerName]) => {
-    const provider = config.providers[providerName];
-    return `${role} ${provider?.backend ?? "?"} / ${provider?.model ?? "?"}`;
+  return Object.entries(config.roles).map(([role, roleConfig]) => {
+    const provider = config.providers[roleConfig.provider];
+    return `${role} ${provider?.backend ?? "?"} / ${roleConfig.model ?? provider?.model ?? "?"}`;
   }).join("; ");
 }
 
@@ -159,6 +168,18 @@ async function safeRun(command: string, args: string[], options?: { cwd?: string
 
 async function fileExistsAt(filePath: string): Promise<boolean> {
   try { await import("node:fs/promises").then(({ access }) => access(filePath)); return true; } catch { return false; }
+}
+
+async function skillExists(root: string, skill: string): Promise<boolean> {
+  if (!/^[a-z0-9][a-z0-9._-]*$/i.test(skill) || skill.includes("..")) return false;
+  const candidates = [
+    `${root}/.factory/skills/${skill}/SKILL.md`,
+    `${root}/skills/${skill}/SKILL.md`,
+    `${root}/.agents/skills/${skill}/SKILL.md`,
+    `${root}/.codex/skills/${skill}/SKILL.md`,
+  ];
+  for (const candidate of candidates) if (await fileExistsAt(candidate)) return true;
+  return false;
 }
 
 function errorMessage(error: unknown): string { return error instanceof Error ? error.message : String(error); }

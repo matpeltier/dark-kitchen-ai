@@ -29,6 +29,10 @@ describe("initialization helpers", () => {
       run: async () => ({ code: 0, stdout: "", stderr: "" }),
     });
     expect(result.changed).toContain(".factory/config.json");
+    const config = JSON.parse(await readFile(path.join(root, ".factory/config.json"), "utf8")) as { version: number; roles: Record<string, unknown>; workflows: Record<string, unknown> };
+    expect(config.version).toBe(3);
+    expect(config.roles.designer).toBeTruthy();
+    expect(config.workflows.design).toBeTruthy();
     expect(await readFile(path.join(root, ".factory/workflows/issue.ts"), "utf8")).toContain("codex-dynamic-workflows");
     expect(await readFile(path.join(root, "AGENTS.md"), "utf8")).toContain("User instruction");
     expect(await readFile(path.join(root, ".gitignore"), "utf8")).toContain(".factory/runtime/");

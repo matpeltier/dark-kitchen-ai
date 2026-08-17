@@ -127,7 +127,8 @@ function mergeConfig(base: FactoryConfig, overrides: Partial<FactoryConfig> | un
     ...overrides,
     baseBranch: overrides?.baseBranch || defaultBranch || base.baseBranch,
     orca: overrides?.orca ? { ...base.orca, ...overrides.orca } : base.orca,
-    agents: { ...base.agents, ...(overrides?.agents || {}) },
+    roles: { ...base.roles, ...(overrides?.roles || {}) },
+    workflows: { ...base.workflows, ...(overrides?.workflows || {}) },
     providers: { ...base.providers, ...(overrides?.providers || {}) },
   };
 }

@@ -1,7 +1,7 @@
 import path from "node:path";
 import { readFile, writeFile } from "node:fs/promises";
 import { z } from "zod";
-import type { CommandSpec, FactoryConfig, ProviderConfig } from "./types.js";
+import type { CommandSpec, FactoryConfig, ProviderConfig, RoleConfig, WorkflowProfile } from "./types.js";
 
 export const FACTORY_DIR = ".factory";
 export const RUNTIME_DIR = path.join(FACTORY_DIR, "runtime");
@@ -22,6 +22,25 @@ const commandSpecSchema = z.object({
   args: z.array(z.string()),
 });
 
+const roleSchema = z.object({
+  provider: z.string().min(1),
+  model: z.string().min(1).optional(),
+  prompt: z.string().optional(),
+  agentType: z.string().min(1).optional(),
+  skills: z.array(z.string().min(1)).optional(),
+  mcp: z.array(z.string().min(1)).optional(),
+});
+
+const workflowProfileSchema = z.object({
+  roles: z.array(z.string().min(1)).min(1),
+  plan: z.enum(["auto", "always", "never"]).optional(),
+  prompt: z.string().optional(),
+  planRole: z.string().min(1).optional(),
+  implementationRole: z.string().min(1).optional(),
+  reviewRole: z.string().min(1).optional(),
+  fixRole: z.string().min(1).optional(),
+});
+
 const sharedConfigSchema = z.object({
   maxParallelIssues: z.number().int().positive(),
   pollIntervalSeconds: z.number().int().positive(),
@@ -32,29 +51,57 @@ const sharedConfigSchema = z.object({
   workflowConfig: z.string().min(1),
   maxWorkflowRetries: z.number().int().nonnegative(),
   checkTimeoutSeconds: z.number().int().positive(),
+  providers: z.record(z.string(), providerSchema),
+});
+
+export const factoryConfigSchema = sharedConfigSchema.extend({
+  version: z.literal(3),
+  orca: commandSpecSchema,
+  roles: z.record(z.string(), roleSchema),
+  workflows: z.record(z.string(), workflowProfileSchema),
+});
+
+const v2ConfigSchema = sharedConfigSchema.extend({
+  version: z.literal(2),
+  orca: commandSpecSchema,
   agents: z.object({
     architect: z.string().min(1),
     implementer: z.string().min(1),
     reviewer: z.string().min(1),
     fixer: z.string().min(1),
   }),
-  providers: z.record(z.string(), providerSchema),
 });
 
-export const factoryConfigSchema = sharedConfigSchema.extend({
-  version: z.literal(2),
-  orca: commandSpecSchema,
-});
-
-const legacyFactoryConfigSchema = sharedConfigSchema.extend({
+const v1ConfigSchema = sharedConfigSchema.extend({
   version: z.literal(1),
   orcaCommand: z.string().min(1),
+  agents: z.object({
+    architect: z.string().min(1),
+    implementer: z.string().min(1),
+    reviewer: z.string().min(1),
+    fixer: z.string().min(1),
+  }),
 });
+
+const defaultRolePrompts: Record<string, string> = {
+  architect: "Plan the smallest implementation that satisfies the issue acceptance criteria. Do not invent product requirements.",
+  designer: "Design a coherent, accessible, responsive solution. Respect the existing design system and document important UI decisions.",
+  implementer: "Implement only the issue acceptance criteria. Make the smallest correct change and verify it.",
+  reviewer: "Independently review correctness, regressions, acceptance criteria, and missing tests. Return actionable findings only.",
+  fixer: "Fix only blocking review findings. Make the smallest correct changes and rerun relevant verification.",
+};
 
 export function defaultConfig(): FactoryConfig {
   const codex: ProviderConfig = { backend: "codex", model: "gpt-5.6-luna", reasoning: "high" };
+  const roles: Record<string, RoleConfig> = {
+    architect: { provider: "architect", prompt: defaultRolePrompts.architect },
+    designer: { provider: "architect", prompt: defaultRolePrompts.designer, skills: [] },
+    implementer: { provider: "implementer", prompt: defaultRolePrompts.implementer },
+    reviewer: { provider: "reviewer", prompt: defaultRolePrompts.reviewer },
+    fixer: { provider: "implementer", prompt: defaultRolePrompts.fixer },
+  };
   return {
-    version: 2,
+    version: 3,
     maxParallelIssues: 3,
     pollIntervalSeconds: 15,
     autoMerge: true,
@@ -68,11 +115,10 @@ export function defaultConfig(): FactoryConfig {
     workflowConfig: ".factory/codex-workflow.config.ts",
     maxWorkflowRetries: 1,
     checkTimeoutSeconds: 1800,
-    agents: {
-      architect: "architect",
-      implementer: "implementer",
-      reviewer: "reviewer",
-      fixer: "implementer",
+    roles,
+    workflows: {
+      default: { roles: ["architect", "implementer", "reviewer", "fixer"], plan: "auto", planRole: "architect", implementationRole: "implementer", reviewRole: "reviewer", fixRole: "fixer" },
+      design: { roles: ["designer", "implementer", "reviewer", "fixer"], plan: "always", planRole: "designer", implementationRole: "implementer", reviewRole: "reviewer", fixRole: "fixer", prompt: "This is a design-led issue. Preserve visual, accessibility, and interaction decisions in the implementation." },
     },
     providers: {
       architect: codex,
@@ -96,14 +142,44 @@ export function normalizeConfig(raw: unknown): { config: FactoryConfig; migrated
   const current = factoryConfigSchema.safeParse(raw);
   if (current.success) return { config: current.data as FactoryConfig, migrated: false };
 
-  const legacy = legacyFactoryConfigSchema.safeParse(raw);
-  if (legacy.success) {
-    const { orcaCommand, ...rest } = legacy.data;
-    const orca: CommandSpec = { command: orcaCommand, args: [] };
-    return { config: { ...rest, version: 2, orca } as FactoryConfig, migrated: true };
+  const v2 = v2ConfigSchema.safeParse(raw);
+  if (v2.success) return { config: migrateLegacy(v2.data, v2.data.orca), migrated: true };
+
+  const v1 = v1ConfigSchema.safeParse(raw);
+  if (v1.success) {
+    const { orcaCommand, ...rest } = v1.data;
+    return { config: migrateLegacy(rest, { command: orcaCommand, args: [] }), migrated: true };
   }
 
   throw current.error;
+}
+
+function migrateLegacy(
+  legacy: { providers: Record<string, ProviderConfig>; agents: Record<string, string>; version?: number } & Record<string, unknown>,
+  orca: CommandSpec,
+): FactoryConfig {
+  const roles = Object.fromEntries(Object.entries(legacy.agents).map(([name, provider]) => [
+    name,
+    { provider, prompt: defaultRolePrompts[name] },
+  ]));
+  const { agents: _agents, version: _version, ...rest } = legacy;
+  return {
+    ...rest,
+    version: 3,
+    orca,
+    roles,
+    workflows: {
+      default: {
+        roles: Object.keys(legacy.agents),
+        plan: "auto",
+        planRole: legacy.agents.architect,
+        implementationRole: legacy.agents.implementer,
+        reviewRole: legacy.agents.reviewer,
+        fixRole: legacy.agents.fixer,
+      },
+    },
+    providers: legacy.providers,
+  } as unknown as FactoryConfig;
 }
 
 export function configPath(root: string): string {
@@ -116,13 +192,31 @@ export function runtimePath(root: string): string {
 
 export function validateRoleProviders(config: FactoryConfig): string[] {
   const errors: string[] = [];
-  for (const [role, providerName] of Object.entries(config.agents)) {
-    const provider = config.providers[providerName];
-    if (!provider) errors.push(`${role} references missing provider ${providerName}`);
+  for (const [role, roleConfig] of Object.entries(config.roles)) {
+    if (!config.providers[roleConfig.provider]) errors.push(`${role} references missing provider ${roleConfig.provider}`);
+    for (const skill of roleConfig.skills ?? []) {
+      if (!/^[a-z0-9][a-z0-9._-]*$/i.test(skill) || skill.includes("..")) errors.push(`${role} references unsafe skill name ${skill}`);
+    }
   }
+  for (const [workflow, profile] of Object.entries(config.workflows)) {
+    for (const role of profile.roles) if (!config.roles[role]) errors.push(`${workflow} references missing role ${role}`);
+    for (const [slot, role] of Object.entries({
+      planRole: profile.planRole,
+      implementationRole: profile.implementationRole,
+      reviewRole: profile.reviewRole,
+      fixRole: profile.fixRole,
+    })) {
+      if (role && !profile.roles.includes(role)) errors.push(`${workflow}.${slot} references role ${role} that is not allowed by the profile`);
+    }
+  }
+  if (!config.workflows.default) errors.push("workflows must define a default profile");
   return errors;
 }
 
 export function providerNames(config: FactoryConfig): string[] {
-  return [...new Set(Object.values(config.agents))];
+  return [...new Set(Object.values(config.roles).map((role) => role.provider))];
+}
+
+export function roleConfig(config: FactoryConfig, roleName: string): RoleConfig | undefined {
+  return config.roles[roleName];
 }
