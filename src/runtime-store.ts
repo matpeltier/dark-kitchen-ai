@@ -1,7 +1,7 @@
 import path from "node:path";
 import { open, readdir, unlink } from "node:fs/promises";
 import { ensureDir, fileExists, readJson, writeJson } from "./utils.js";
-import type { RuntimeRecord, WorkerResult } from "./types.js";
+import type { RuntimeRecord, WorkerResult, WorkflowInput } from "./types.js";
 import { RUNTIME_DIR } from "./config.js";
 import { WorkerResultSchema } from "./types.js";
 
@@ -28,6 +28,14 @@ export class RuntimeStore {
 
   resultPath(issueNumber: number): string {
     return path.join(this.issueDir(issueNumber), "result.json");
+  }
+
+  inputPath(issueNumber: number): string {
+    return path.join(this.issueDir(issueNumber), "input.json");
+  }
+
+  async writeInput(issueNumber: number, input: WorkflowInput): Promise<void> {
+    await writeJson(this.inputPath(issueNumber), input);
   }
 
   async save(record: RuntimeRecord): Promise<void> {

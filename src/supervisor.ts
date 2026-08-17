@@ -1,3 +1,4 @@
+import path from "node:path";
 import { commandFailure, runCommand } from "./command.js";
 import { buildIssueGraph, computeReadyIssues } from "./graph.js";
 import { GitHubClient } from "./github.js";
@@ -6,7 +7,7 @@ import { OrcaClient } from "./orca.js";
 import { RuntimeStore } from "./runtime-store.js";
 import { shellQuote, slugify } from "./utils.js";
 import { DARK_KITCHEN_LABEL } from "./types.js";
-import type { CommandRunner, FactoryConfig, GitHubIssue, OrcaWorktree, RuntimeRecord, WorkerResult } from "./types.js";
+import type { CommandRunner, FactoryConfig, GitHubIssue, OrcaWorktree, RuntimeRecord, WorkerResult, WorkflowInput } from "./types.js";
 
 export type GitHubPort = Pick<GitHubClient, "listIssues" | "viewIssue" | "addLabel" | "removeLabel" | "editLabels" | "comment" | "closeIssue" | "createPullRequest" | "waitForChecks" | "mergePullRequest" | "issueIsClosed">;
 export type OrcaPort = Pick<OrcaClient, "ensureRepo" | "createWorktree" | "createTerminal" | "terminalFinished" | "removeWorktree">;
@@ -116,7 +117,9 @@ export class Supervisor {
       }
       if (!branch) branch = worktree.branch || await this.gitBranch(worktree.path);
       await this.deps.store.clearResult(issue.number);
-      const terminal = await this.deps.orca.createTerminal(worktree.id, `Dark Kitchen AI #${issue.number}`, this.workflowCommand(issue));
+      const input = this.workflowInput(issue);
+      await this.deps.store.writeInput(issue.number, input);
+      const terminal = await this.deps.orca.createTerminal(worktree.id, `Dark Kitchen AI #${issue.number}`, this.workflowCommand(input));
       const now = new Date().toISOString();
       const record: RuntimeRecord = {
         issueNumber: issue.number,
@@ -138,20 +141,24 @@ export class Supervisor {
     }
   }
 
-  private workflowCommand(issue: GitHubIssue): string {
-    const args = JSON.stringify({
+  private workflowInput(issue: GitHubIssue): WorkflowInput {
+    return {
       number: issue.number,
       title: issue.title,
       body: issue.body,
       labels: issue.labels,
       blockedBy: issue.blockedBy,
       resultPath: this.deps.store.resultPath(issue.number),
-    });
+    };
+  }
+
+  private workflowCommand(input: WorkflowInput): string {
+    const inputReference = `@${path.resolve(this.deps.store.inputPath(input.number))}`;
     return [
       this.config.workflowCommand,
       "run", shellQuote(this.config.workflowFile),
       "--config", shellQuote(this.config.workflowConfig),
-      "--args", shellQuote(args),
+      "--args", shellQuote(inputReference),
       "--json", "--no-progress",
     ].join(" ") + "; exit $?";
   }
