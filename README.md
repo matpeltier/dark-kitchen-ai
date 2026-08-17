@@ -162,7 +162,7 @@ With all five issues marked `dark-kitchen:auto`, #1 and #2 start first, #3 start
 
 ## Configuration
 
-`init` generates a small, committed configuration at `.factory/config.json`. Runtime state and results under `.factory/runtime/` are ignored by Git.
+`init` generates a small, committed configuration at `.factory/config.json`. Runtime state under `.factory/runtime/` is ignored by Git. For each issue, Dark Kitchen AI writes the exact workflow input to `.factory/runtime/<issue>/input.json` and the worker writes its structured result to `result.json`; the Orca command passes only a reference to that input file, never the issue body itself.
 
 Example:
 

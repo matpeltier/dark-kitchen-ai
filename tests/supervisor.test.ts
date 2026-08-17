@@ -6,7 +6,7 @@ import { defaultConfig } from "../src/config.js";
 import { RuntimeStore } from "../src/runtime-store.js";
 import { Supervisor, type GitHubPort, type OrcaPort, type SupervisorDependencies } from "../src/supervisor.js";
 import type { CommandResult, GitHubIssue, OrcaRepo, OrcaWorktree, PullRequest, RuntimeRecord } from "../src/types.js";
-import { writeJson } from "../src/utils.js";
+import { readJson, writeJson } from "../src/utils.js";
 
 function makeIssue(number: number, blockedBy: number[] = []): GitHubIssue {
   return { number, title: `Issue ${number}`, body: "Implement it", state: "OPEN", labels: ["dark-kitchen:auto"], blockedBy: blockedBy.map((value) => ({ number: value })), blocking: [] };
@@ -35,10 +35,14 @@ async function fixture(initialIssues: GitHubIssue[], options: { maxParallelIssue
   } satisfies GitHubPort;
   let terminalFinished = false;
   let terminalCount = 0;
+  const terminalCommands: string[] = [];
   const orca = {
     ensureRepo: async (repoPath: string): Promise<OrcaRepo> => ({ id: "repo-1", path: repoPath }),
     createWorktree: async (_repo: OrcaRepo, name: string): Promise<OrcaWorktree> => ({ id: `repo-1::${root}/${name}`, path: root, branch: name }),
-    createTerminal: async (): Promise<{ handle: string }> => ({ handle: `terminal-${++terminalCount}` }),
+    createTerminal: async (_worktreeId: string, _title: string, command: string): Promise<{ handle: string }> => {
+      terminalCommands.push(command);
+      return { handle: `terminal-${++terminalCount}` };
+    },
     terminalFinished: async () => terminalFinished,
     removeWorktree: async () => { events.push("remove-worktree"); },
   } satisfies OrcaPort;
@@ -51,7 +55,7 @@ async function fixture(initialIssues: GitHubIssue[], options: { maxParallelIssue
   const config = { ...defaultConfig(), maxParallelIssues: options.maxParallelIssues ?? 2, maxWorkflowRetries: options.retries ?? 0 };
   const store = new RuntimeStore(root);
   const deps: SupervisorDependencies = { github, orca, store, run: command, sleep: async () => undefined, notify: async (_title, message) => events.push(`notify:${message}`) };
-  return { root, issues, events, github, orca, store, deps, config, setFinished: (value: boolean) => { terminalFinished = value; } };
+  return { root, issues, events, github, orca, store, deps, config, terminalCommands, setFinished: (value: boolean) => { terminalFinished = value; } };
 }
 
 describe("Dark Kitchen AI supervisor", () => {
@@ -60,6 +64,78 @@ describe("Dark Kitchen AI supervisor", () => {
     await new Supervisor(test.root, test.config, test.deps).run(true);
     expect(test.events.filter((event) => event.startsWith("labels:") && event.includes("dark-kitchen:running"))).toHaveLength(1);
     expect((await test.store.list()).filter((record) => record.status === "running")).toHaveLength(1);
+  });
+
+  it("persists the exact workflow input before launching the terminal", async () => {
+    const issue = makeIssue(1);
+    issue.title = "Quotes and shell syntax";
+    issue.body = "line 1\n' \" ` $(echo unsafe) ; && café 🚀";
+    issue.labels = ["dark-kitchen:auto", "priority:high"];
+    issue.blockedBy = [{ number: 7, title: "Dependency", state: "CLOSED", url: "https://github.com/test/test/issues/7" }];
+    const dependency = makeIssue(7);
+    dependency.state = "CLOSED";
+    dependency.labels = [];
+    const test = await fixture([issue, dependency]);
+
+    await new Supervisor(test.root, test.config, test.deps).run(true);
+
+    expect(await readJson(test.store.inputPath(1))).toEqual({
+      number: issue.number,
+      title: issue.title,
+      body: issue.body,
+      labels: issue.labels,
+      blockedBy: issue.blockedBy,
+      resultPath: test.store.resultPath(1),
+    });
+    expect(test.terminalCommands).toHaveLength(1);
+  });
+
+  it("keeps a huge and shell-sensitive issue body out of the Orca command", async () => {
+    const body = [
+      "start",
+      "' \" ` $(echo should-not-run) ; && café 🚀",
+      "large markdown ".repeat(Math.ceil(100 * 1024 / 15)),
+    ].join("\n");
+    const issue = makeIssue(1);
+    issue.title = "Title ' \" ` $(must-not-be-interpolated)";
+    issue.body = body;
+    issue.labels = ["dark-kitchen:auto", "label with $(syntax)", "étiquette"];
+    const test = await fixture([issue]);
+
+    await new Supervisor(test.root, test.config, test.deps).run(true);
+
+    const command = test.terminalCommands[0];
+    expect(command).toBeDefined();
+    expect(command.length).toBeLessThan(2_000);
+    expect(command).not.toContain(body);
+    expect(command).not.toContain("should-not-run");
+    expect(command).not.toContain(issue.title);
+    for (const label of issue.labels) expect(command).not.toContain(label);
+    expect(command).toContain("--args");
+    expect(command).toContain("@");
+    expect(body.length).toBeGreaterThanOrEqual(100 * 1024);
+    expect((await readJson<{ body: string }>(test.store.inputPath(1))).body).toBe(body);
+  });
+
+  it("rewrites the input artifact from the latest issue contents on retry", async () => {
+    const issue = makeIssue(1);
+    const test = await fixture([issue]);
+    const supervisor = new Supervisor(test.root, test.config, test.deps);
+
+    await supervisor.run(true);
+    expect((await readJson<{ body: string }>(test.store.inputPath(1))).body).toBe("Implement it");
+
+    const record = await test.store.get(1);
+    expect(record).toBeDefined();
+    await test.store.save({ ...record!, status: "failed" });
+    test.issues[0].body = "latest requirements\nwith 'quotes' and $(syntax)";
+    test.issues[0].labels = ["dark-kitchen:auto", "dark-kitchen:failed"];
+
+    await supervisor.retry(1);
+
+    expect((await readJson<{ body: string }>(test.store.inputPath(1))).body).toBe(test.issues[0].body);
+    expect(test.terminalCommands).toHaveLength(2);
+    expect(test.terminalCommands[1]).not.toContain(test.issues[0].body);
   });
 
   it("escalates one issue without stopping an unrelated ready issue", async () => {

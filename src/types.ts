@@ -52,6 +52,15 @@ export type GitHubIssue = {
   closedAt?: string | null;
 };
 
+export type WorkflowInput = {
+  number: number;
+  title: string;
+  body: string;
+  labels: string[];
+  blockedBy: IssueDependency[];
+  resultPath: string;
+};
+
 export type GraphWarning = {
   issueNumber: number;
   dependencyNumber: number;
