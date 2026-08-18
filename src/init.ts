@@ -3,7 +3,7 @@ import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { runCommand } from "./command.js";
 import { GitHubClient, type GitHubRepository } from "./github.js";
 import { defaultConfig, normalizeConfig } from "./config.js";
-import { FACTORY_AGENTS_SECTION, PROVIDER_CONFIG_TEMPLATE, configTemplate } from "./templates.js";
+import { FACTORY_AGENTS_SECTION, ODW_CONFIG_TEMPLATE, configTemplate } from "./templates.js";
 import { ensureDir, fileExists } from "./utils.js";
 import type { CommandRunner, FactoryConfig } from "./types.js";
 
@@ -47,11 +47,16 @@ export async function initializeRepository(root: string, options: InitOptions = 
   }
 
   await ensureDir(path.join(root, ".factory", "workflows"));
+  await ensureDir(path.join(root, ".open-dynamic-workflow", "workflows"));
+  await ensureDir(path.join(root, ".open-dynamic-workflow", "tools"));
   const files: Array<[string, string]> = [
     [".factory/config.json", configTemplate(config)],
-    [".factory/codex-workflow.config.ts", PROVIDER_CONFIG_TEMPLATE],
     [".factory/result.schema.json", await readTemplate("result.schema.json")],
-    [".factory/workflows/issue.ts", await readTemplate("issue-workflow.ts")],
+    [".open-dynamic-workflow/config.yaml", ODW_CONFIG_TEMPLATE],
+    [".open-dynamic-workflow/workflows/issue.workflow.ts", await readTemplate("issue-workflow.ts")],
+    [".open-dynamic-workflow/tools/read-json.tool.ts", await readTemplate("read-json.tool.ts")],
+    [".open-dynamic-workflow/tools/read-skill.tool.ts", await readTemplate("read-skill.tool.ts")],
+    [".open-dynamic-workflow/tools/write-json.tool.ts", await readTemplate("write-json.tool.ts")],
   ];
   for (const [relative, content] of files) {
     const target = path.join(root, relative);
@@ -151,6 +156,7 @@ export function mergeAgents(existing: string): string {
 export function addGitignore(existing: string): string {
   const lines = existing.split(/\r?\n/).filter(Boolean);
   if (!lines.includes(".factory/runtime/")) lines.push(".factory/runtime/");
+  if (!lines.includes(".open-dynamic-workflow/runs/")) lines.push(".open-dynamic-workflow/runs/");
   return `${lines.join("\n")}\n`;
 }
 

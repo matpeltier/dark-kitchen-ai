@@ -33,7 +33,9 @@ describe("initialization helpers", () => {
     expect(config.version).toBe(3);
     expect(config.roles.designer).toBeTruthy();
     expect(config.workflows.design).toBeTruthy();
-    expect(await readFile(path.join(root, ".factory/workflows/issue.ts"), "utf8")).toContain("codex-dynamic-workflows");
+    expect(await readFile(path.join(root, ".open-dynamic-workflow/workflows/issue.workflow.ts"), "utf8")).toContain('provider: "opencode"');
+    expect(await readFile(path.join(root, ".open-dynamic-workflow/config.yaml"), "utf8")).toContain("defaultProvider: opencode");
+    expect(await readFile(path.join(root, ".open-dynamic-workflow/tools/write-json.tool.ts"), "utf8")).toContain('id: "write-json"');
     expect(await readFile(path.join(root, "AGENTS.md"), "utf8")).toContain("User instruction");
     expect(await readFile(path.join(root, ".gitignore"), "utf8")).toContain(".factory/runtime/");
   });

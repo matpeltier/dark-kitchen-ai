@@ -6,6 +6,9 @@ import type { CommandSpec, FactoryConfig, ProviderConfig, RoleConfig, WorkflowPr
 export const FACTORY_DIR = ".factory";
 export const RUNTIME_DIR = path.join(FACTORY_DIR, "runtime");
 export const CONFIG_PATH = path.join(FACTORY_DIR, "config.json");
+export const DEFAULT_WORKFLOW_COMMAND = "open-dynamic-workflow";
+export const DEFAULT_WORKFLOW_FILE = ".open-dynamic-workflow/workflows/issue.workflow.ts";
+export const DEFAULT_WORKFLOW_CONFIG = ".open-dynamic-workflow/config.yaml";
 
 const providerSchema = z.object({
   backend: z.string().min(1),
@@ -91,7 +94,7 @@ const defaultRolePrompts: Record<string, string> = {
 };
 
 export function defaultConfig(): FactoryConfig {
-  const codex: ProviderConfig = { backend: "codex", model: "gpt-5.6-luna", reasoning: "high" };
+  const opencode: ProviderConfig = { backend: "opencode", model: "openai/gpt-5.6-luna", reasoning: "high" };
   const roles: Record<string, RoleConfig> = {
     architect: { provider: "architect", prompt: defaultRolePrompts.architect },
     designer: { provider: "architect", prompt: defaultRolePrompts.designer, skills: [] },
@@ -105,13 +108,13 @@ export function defaultConfig(): FactoryConfig {
     pollIntervalSeconds: 15,
     autoMerge: true,
     baseBranch: "main",
-    workflowCommand: "codex-workflow",
+    workflowCommand: DEFAULT_WORKFLOW_COMMAND,
     orca: {
       command: process.env.ORCA_CLI_COMMAND || (process.platform === "linux" ? "orca-ide" : "orca"),
       args: [],
     },
-    workflowFile: ".factory/workflows/issue.ts",
-    workflowConfig: ".factory/codex-workflow.config.ts",
+    workflowFile: DEFAULT_WORKFLOW_FILE,
+    workflowConfig: DEFAULT_WORKFLOW_CONFIG,
     checkTimeoutSeconds: 1800,
     roles,
     workflows: {
@@ -119,10 +122,10 @@ export function defaultConfig(): FactoryConfig {
       design: { roles: ["designer", "implementer", "reviewer", "fixer"], plan: "always", planRole: "designer", implementationRole: "implementer", reviewRole: "reviewer", fixRole: "fixer", prompt: "This is a design-led issue. Preserve visual, accessibility, and interaction decisions in the implementation." },
     },
     providers: {
-      architect: codex,
-      implementer: { ...codex, reasoning: "medium" },
-      reviewer: codex,
-      fixer: codex,
+      architect: opencode,
+      implementer: { ...opencode, reasoning: "medium" },
+      reviewer: opencode,
+      fixer: opencode,
     },
   };
 }
@@ -141,7 +144,8 @@ export function normalizeConfig(raw: unknown): { config: FactoryConfig; migrated
   const current = factoryConfigSchema.safeParse(raw);
   if (current.success) {
     const removedRetrySetting = typeof raw === "object" && raw !== null && "maxWorkflowRetries" in raw;
-    return { config: current.data as FactoryConfig, migrated: removedRetrySetting };
+    const runtime = migrateWorkflowRuntime(current.data as FactoryConfig);
+    return { config: runtime.config, migrated: removedRetrySetting || runtime.migrated };
   }
 
   const v2 = v2ConfigSchema.safeParse(raw);
@@ -165,7 +169,7 @@ function migrateLegacy(
     { provider, prompt: defaultRolePrompts[name] },
   ]));
   const { agents: _agents, version: _version, ...rest } = legacy;
-  return {
+  return migrateWorkflowRuntime({
     ...rest,
     version: 3,
     orca,
@@ -181,7 +185,29 @@ function migrateLegacy(
       },
     },
     providers: legacy.providers,
-  } as unknown as FactoryConfig;
+  } as unknown as FactoryConfig).config;
+}
+
+function migrateWorkflowRuntime(config: FactoryConfig): { config: FactoryConfig; migrated: boolean } {
+  const usesCodexWorkflow = config.workflowCommand === "codex-workflow"
+    || config.workflowFile.includes("codex-workflow")
+    || config.workflowConfig.includes("codex-workflow");
+  if (!usesCodexWorkflow) return { config, migrated: false };
+  return {
+    config: {
+      ...config,
+      workflowCommand: DEFAULT_WORKFLOW_COMMAND,
+      workflowFile: DEFAULT_WORKFLOW_FILE,
+      workflowConfig: DEFAULT_WORKFLOW_CONFIG,
+      providers: Object.fromEntries(Object.entries(config.providers).map(([name, provider]) => [
+        name,
+        provider.backend === "codex"
+          ? { ...provider, backend: "opencode", model: provider.model.includes("/") ? provider.model : `openai/${provider.model}` }
+          : provider,
+      ])),
+    },
+    migrated: true,
+  };
 }
 
 export function configPath(root: string): string {

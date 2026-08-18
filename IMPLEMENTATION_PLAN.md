@@ -7,7 +7,7 @@ This repository contains the deliberately small V0 implementation of Dark Kitche
 - GitHub Issues and native issue dependencies are the durable product graph.
 - Dark Kitchen AI reads GitHub through the authenticated `gh` CLI and native dependency REST endpoints when the installed `gh` version does not expose dependency JSON fields directly.
 - Orca owns the repository registration, isolated worktrees, and workflow terminals.
-- `codex-workflow` runs the generated issue workflow and its role-routed subagents.
+- `open-dynamic-workflow` runs the generated issue workflow and its OpenCode role-routed subagents.
 - The supervisor owns readiness, runtime metadata, PRs, checks, merges, issue closure, labels, retries, and notifications.
 - `.factory/runtime/` is ephemeral and ignored by Git; `.factory/config.json` and generated workflow files are committed project configuration.
 
@@ -28,6 +28,6 @@ External CLIs evolve. Keep their command shapes in the small adapters under `src
 
 ## Deliberate boundaries
 
-No cloud service, MCP server, custom backlog database, remote execution, Kubernetes layer, or generic provider plugin system belongs in V0. Role-based routing remains first-class because cost/quality selection is part of the intended workflow, but it uses only the backends supported by the installed codex-dynamic-workflows runtime.
+No cloud service, MCP server, custom backlog database, remote execution, Kubernetes layer, or generic provider plugin system belongs in V0. Role-based routing remains first-class because cost/quality selection is part of the intended workflow, but it uses the installed OpenCode provider through Open Dynamic Workflow.
 
 Role customization is intentionally declarative: `.factory/config.json` owns providers, roles, prompts, skills, and workflow profiles; an issue may select an allowlisted profile with a `Dark Kitchen workflow` block. MCP names are carried as reviewed capability hints until the upstream workflow runtime supports per-subagent MCP registration.

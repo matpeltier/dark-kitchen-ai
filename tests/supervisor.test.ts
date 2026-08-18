@@ -115,8 +115,8 @@ describe("Dark Kitchen AI supervisor", () => {
     expect(command).not.toContain("should-not-run");
     expect(command).not.toContain(issue.title);
     for (const label of issue.labels) expect(command).not.toContain(label);
-    expect(command).toContain("--args");
-    expect(command).toContain("@");
+    expect(command).toContain("--arg");
+    expect(command).toContain("inputPath=");
     expect(body.length).toBeGreaterThanOrEqual(100 * 1024);
     expect((await readJson<{ body: string }>(test.store.inputPath(1))).body).toBe(body);
   });

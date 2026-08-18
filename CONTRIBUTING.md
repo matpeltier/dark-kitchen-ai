@@ -29,7 +29,7 @@ Tests should mock GitHub, Orca, and worker commands. Do not require personal cre
 
 - GitHub Issues and native dependencies remain the durable source of truth.
 - Orca remains the top-level worktree/runtime manager.
-- codex-dynamic-workflows remains the workflow runtime.
+- Open Dynamic Workflow remains the workflow runtime and OpenCode is the default provider.
 - Role-based provider routing is supported; a general plugin framework is out of scope for V0.
 - Workers must not merge PRs, close unrelated issues, or change the product roadmap.
 - New generated files must preserve unrelated user content, especially `AGENTS.md`.

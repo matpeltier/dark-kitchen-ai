@@ -18,7 +18,7 @@ body:
     id: environment
     attributes:
       label: Environment
-      description: OS, Node version, GitHub CLI version, Orca version, and codex-workflow version.
+      description: OS, Node version, GitHub CLI version, Orca version, OpenCode version, and Open Dynamic Workflow version.
     validations:
       required: true
   - type: textarea

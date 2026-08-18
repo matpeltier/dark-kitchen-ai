@@ -34,6 +34,23 @@ describe("configuration normalization", () => {
     expect("maxWorkflowRetries" in result.config).toBe(false);
   });
 
+  it("migrates the former Codex workflow runtime to Open Dynamic Workflow", () => {
+    const legacy = {
+      ...defaultConfig(),
+      workflowCommand: "codex-workflow",
+      workflowFile: ".factory/workflows/issue.ts",
+      workflowConfig: ".factory/codex-workflow.config.ts",
+      providers: { ...defaultConfig().providers, architect: { ...defaultConfig().providers.architect, backend: "codex", model: "gpt-5.6-luna" } },
+    };
+    const result = normalizeConfig(legacy);
+    expect(result.migrated).toBe(true);
+    expect(result.config.workflowCommand).toBe("open-dynamic-workflow");
+    expect(result.config.workflowFile).toBe(".open-dynamic-workflow/workflows/issue.workflow.ts");
+    expect(result.config.workflowConfig).toBe(".open-dynamic-workflow/config.yaml");
+    expect(result.config.providers.architect.backend).toBe("opencode");
+    expect(result.config.providers.architect.model).toBe("openai/gpt-5.6-luna");
+  });
+
   it("persists a V1 to V3 migration when loading a project config", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "dark-kitchen-config-"));
     const configPath = path.join(root, CONFIG_PATH);

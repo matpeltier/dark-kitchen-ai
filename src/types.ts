@@ -75,7 +75,7 @@ export type IssueGraph = {
 };
 
 export type ProviderConfig = {
-  backend: "codex" | "gemini" | "pi" | string;
+  backend: "opencode" | "codex" | "gemini" | "pi" | string;
   model: string;
   reasoning?: string;
   thinking?: string;

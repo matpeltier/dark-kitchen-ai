@@ -117,33 +117,17 @@ export async function runDoctor(cwd: string): Promise<{ checks: DoctorCheck[]; o
     }
 
     const workflowAvailable = await commandAvailable(config.workflowCommand);
-    add("codex-workflow CLI", workflowAvailable, config.workflowCommand);
+    add("Open Dynamic Workflow CLI", workflowAvailable, config.workflowCommand);
     if (workflowAvailable) {
-      const workflowDoctor = await safeRun(config.workflowCommand, ["doctor"], root ? { cwd: `${root}/.factory` } : undefined);
-      add("codex-workflow runtime", workflowDoctor.code === 0, trimOutput(workflowDoctor.stderr || workflowDoctor.stdout));
+      const workflowDoctor = await safeRun(config.workflowCommand, ["doctor"], root ? { cwd: root } : undefined);
+      add("Open Dynamic Workflow runtime", workflowDoctor.code === 0, trimOutput(workflowDoctor.stderr || workflowDoctor.stdout));
     } else {
-      add("codex-workflow runtime", false, "CLI unavailable");
+      add("Open Dynamic Workflow runtime", false, "CLI unavailable");
     }
-    add("Bun", await commandAvailable("bun"), "required by codex-dynamic-workflows");
+    add("OpenCode CLI", await commandAvailable("opencode"), "configured workflow provider");
     for (const providerName of providerNames(config)) {
       const provider = config.providers[providerName];
-      if (!provider) continue;
-      if (provider.backend === "codex") {
-        add(`Codex CLI (${providerName})`, await commandAvailable("codex"), "configured provider backend");
-        if (await commandAvailable("codex")) {
-          const login = await safeRun("codex", ["login", "status"]);
-          add(`Codex auth (${providerName})`, login.code === 0, trimOutput(login.stderr || login.stdout));
-        }
-      } else if (provider.backend === "gemini") {
-        const command = typeof provider.geminiCommand === "string" ? provider.geminiCommand : "gemini";
-        add(`Gemini CLI (${providerName})`, await commandAvailable(command), "configured provider backend");
-      } else if (provider.backend === "pi") {
-        const command = typeof provider.piCommand === "string" ? provider.piCommand : "pi";
-        add(`Pi CLI (${providerName})`, await commandAvailable(command), "configured provider backend");
-        if (provider.apiKeyEnv) add(`Provider key ${provider.apiKeyEnv}`, Boolean(process.env[provider.apiKeyEnv]), `required by ${providerName}; key value is never printed`);
-      } else {
-        add(`Provider backend (${providerName})`, false, `unsupported backend ${provider.backend}; supported: codex, gemini, pi`);
-      }
+      if (provider?.apiKeyEnv) add(`Provider key ${provider.apiKeyEnv}`, Boolean(process.env[provider.apiKeyEnv]), `required by ${providerName}; key value is never printed`);
     }
     const major = Number(process.versions.node.split(".")[0]);
     add("Node.js", major >= 22, `v${process.versions.node} (Dark Kitchen AI requires Node >= 22)`);
@@ -175,6 +159,7 @@ async function skillExists(root: string, skill: string): Promise<boolean> {
   const candidates = [
     `${root}/.factory/skills/${skill}/SKILL.md`,
     `${root}/skills/${skill}/SKILL.md`,
+    `${root}/.opencode/skills/${skill}/SKILL.md`,
     `${root}/.agents/skills/${skill}/SKILL.md`,
     `${root}/.codex/skills/${skill}/SKILL.md`,
   ];

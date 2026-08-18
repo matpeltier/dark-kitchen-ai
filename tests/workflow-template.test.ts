@@ -12,5 +12,8 @@ describe("generated issue workflow persistence", () => {
     expect(source).toContain('status: "failed"');
     expect(source).toContain("Resolve every blocking finding at its root cause");
     expect(source).toContain("Continue in the existing preserved task worktree");
+    expect(source).toContain("Read the complete issue input JSON");
+    expect(source).toContain("return result.json");
+    expect(source).not.toContain("Original issue and acceptance criteria:\n${issue.body}");
   });
 });

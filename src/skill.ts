@@ -17,7 +17,7 @@ export function bundledSkillPath(): string {
 export async function installSkill(destination: string | undefined, options: InstallSkillOptions = {}): Promise<string> {
   if (destination && options.global) throw new Error("Choose either a destination or --global, not both.");
   const target = options.global
-    ? path.join(os.homedir(), ".codex", "skills", "dark-kitchen-issues")
+    ? path.join(os.homedir(), ".config", "opencode", "skills", "dark-kitchen-issues")
     : path.resolve(destination || path.join("skills", "dark-kitchen-issues"));
   if (!options.force && await exists(target)) {
     throw new Error(`${target} already exists. Choose another destination or use --force to replace it.`);

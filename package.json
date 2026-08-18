@@ -1,14 +1,15 @@
 {
   "name": "dark-kitchen-ai",
-  "version": "0.3.0",
-  "description": "A local GitHub issue graph supervisor for Orca and codex-dynamic-workflows.",
+  "version": "0.3.1",
+  "description": "A local GitHub issue graph supervisor for Orca, OpenCode, and Open Dynamic Workflow.",
   "keywords": [
     "ai",
     "coding-agent",
     "github-issues",
     "github-actions",
     "orca",
-    "codex",
+    "opencode",
+    "open-dynamic-workflow",
     "worktrees",
     "automation"
   ],

@@ -123,7 +123,7 @@ export class Supervisor {
       await this.deps.store.clearResult(issue.number);
       const input = this.workflowInput(issue);
       await this.deps.store.writeInput(issue.number, input);
-      const terminal = await this.deps.orca.createTerminal(worktree.id, `Dark Kitchen AI #${issue.number}`, this.workflowCommand(input));
+      const terminal = await this.deps.orca.createTerminal(worktree.id, `Dark Kitchen AI #${issue.number}`, this.workflowCommand(input, worktree.path));
       terminalHandle = terminal.handle;
       const now = new Date().toISOString();
       const record: RuntimeRecord = {
@@ -174,14 +174,19 @@ export class Supervisor {
     };
   }
 
-  private workflowCommand(input: WorkflowInput): string {
-    const inputReference = `@${path.resolve(this.deps.store.inputPath(input.number))}`;
+  private workflowCommand(input: WorkflowInput, worktreePath: string): string {
+    const inputPath = path.resolve(this.deps.store.inputPath(input.number));
+    const configPath = path.resolve(this.root, ".factory", "config.json");
+    const workflowFile = path.resolve(worktreePath, this.config.workflowFile);
+    const workflowConfig = path.resolve(worktreePath, this.config.workflowConfig);
     return [
       this.config.workflowCommand,
-      "run", shellQuote(this.config.workflowFile),
-      "--config", shellQuote(this.config.workflowConfig),
-      "--args", shellQuote(inputReference),
-      "--json", "--no-progress",
+      "run", shellQuote(workflowFile),
+      "--config", shellQuote(workflowConfig),
+      "--cwd", shellQuote(worktreePath),
+      "--arg", shellQuote(`inputPath=${inputPath}`),
+      "--arg", shellQuote(`configPath=${configPath}`),
+      "--report", "json",
     ].join(" ") + "; exit $?";
   }
 

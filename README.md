@@ -4,11 +4,11 @@
 [![npm](https://img.shields.io/npm/v/dark-kitchen-ai)](https://www.npmjs.com/package/dark-kitchen-ai)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-ChatGPT plans. GitHub remembers. Orca isolates. Codex builds. **Dark Kitchen AI keeps the graph moving.**
+OpenCode plans and builds. GitHub remembers. Orca isolates. **Dark Kitchen AI keeps the graph moving.**
 
-Dark Kitchen AI is a small local CLI for an AI coding workflow that is driven by GitHub Issues. ChatGPT (or a human) defines the product work as issues and native issue dependencies. The supervisor finds ready issues, gives each one an isolated [Orca](https://github.com/stablyai/orca) worktree, runs a [codex-dynamic-workflows](https://github.com/six-ddc/codex-dynamic-workflows) implementation/review workflow, and owns the PR, checks, merge, and issue transition.
+Dark Kitchen AI is a small local CLI for an AI coding workflow that is driven by GitHub Issues. OpenCode (or a human) defines the product work as issues and native issue dependencies. The supervisor finds ready issues, gives each one an isolated [Orca](https://github.com/stablyai/orca) worktree, runs an [Open Dynamic Workflow](https://github.com/travisliu/open-dynamic-workflow) implementation/review workflow through OpenCode, and owns the PR, checks, merge, and issue transition.
 
-It is deliberately a V0 tool: GitHub is the durable source of truth, the CLI is a foreground runtime supervisor, and the supported worker backends are the ones provided by codex-dynamic-workflows.
+It is deliberately a V0 tool: GitHub is the durable source of truth, the CLI is a foreground runtime supervisor, and the worker runtime is the installed Open Dynamic Workflow CLI with its OpenCode provider adapter.
 
 ## What it does
 
@@ -25,7 +25,7 @@ If the worker reaches a real product or access blocker, it labels the issue, com
 
 ## What it is not
 
-Dark Kitchen AI is not a cloud service, MCP server, backlog database, web UI, Kubernetes system, or generic multi-provider platform. It does not replace GitHub Issues and it does not try to make every CLI coding agent a workflow backend. Orca is mandatory at the top level; codex-dynamic-workflows owns its subagent sessions.
+Dark Kitchen AI is not a cloud service, MCP server, backlog database, web UI, Kubernetes system, or generic multi-provider platform. It does not replace GitHub Issues and it does not try to make every CLI coding agent a workflow backend. Orca is mandatory at the top level; Open Dynamic Workflow owns the OpenCode subagent sessions.
 
 ## Prerequisites
 
@@ -35,12 +35,17 @@ Install and authenticate these tools on the machine that will run the supervisor
 - [GitHub CLI](https://cli.github.com/) with `gh auth login`
 - [Orca](https://github.com/stablyai/orca), including its machine-readable CLI
 - Node.js 22 or newer
-- Bun, required by codex-dynamic-workflows
-- `codex-workflow`, from [codex-dynamic-workflows](https://github.com/six-ddc/codex-dynamic-workflows)
-- The worker backends referenced by your active profile: `codex`, `gemini`, and/or `pi`
+- [OpenCode](https://opencode.ai/) CLI, authenticated for the provider/model you want to use
+- `open-dynamic-workflow`, from [Open Dynamic Workflow](https://github.com/travisliu/open-dynamic-workflow)
 - The credentials required by those backends
 
-The exact model IDs and provider flags are account- and version-specific. Run `dark-kitchen-ai doctor` after setup and verify the installed backend documentation before copying a model example.
+The exact OpenCode model IDs and provider flags are account- and version-specific. Use the `provider/model` form expected by OpenCode, then run `dark-kitchen-ai doctor` after setup.
+
+Install the workflow runtime if it is not already available:
+
+```bash
+npm install --global @travisliu/open-dynamic-workflow
+```
 
 ## Install and run with npx
 
@@ -59,7 +64,7 @@ cd my-project
 npx dark-kitchen-ai doctor
 ```
 
-`create` initializes Git, creates the GitHub repository, generates `AGENTS.md` and `.factory/`, registers the repository with Orca, creates the labels, commits, pushes, and runs Doctor. Use `--public` for a public repository. It never overwrites an existing directory.
+`create` initializes Git, creates the GitHub repository, generates `AGENTS.md`, `.factory/`, and `.open-dynamic-workflow/`, registers the repository with Orca, creates the labels, commits, pushes, and runs Doctor. Use `--public` for a public repository. It never overwrites an existing directory.
 
 For an existing GitHub repository:
 
@@ -88,11 +93,11 @@ The generated configuration is:
 }
 ```
 
-Dark Kitchen AI invokes this as an argument array (`node /path/to/orca-cli/index.js status --json`); it does not use `sh -c` or concatenate a shell command. Existing V1 configurations containing `"orcaCommand": "..."` are accepted and migrated to V2 automatically the next time the configuration is loaded.
+Dark Kitchen AI invokes this as an argument array (`node /path/to/orca-cli/index.js status --json`); it does not use `sh -c` or concatenate a shell command. Existing V1 and V2 configurations are accepted and migrated to V3 automatically; former `codex-workflow` runtime paths are migrated to Open Dynamic Workflow the next time the configuration is loaded.
 
 ### Install the planning skill
 
-The repository and npm package include `skills/dark-kitchen-issues/`, a portable `SKILL.md` that teaches ChatGPT/Codex how to plan issues, use the four labels, create native dependency edges, avoid cycles, and resume human-blocked work.
+The repository and npm package include `skills/dark-kitchen-issues/`, a portable `SKILL.md` that teaches OpenCode how to plan issues, use the four labels, create native dependency edges, avoid cycles, and resume human-blocked work.
 
 Install it in the current project:
 
@@ -100,7 +105,7 @@ Install it in the current project:
 npx dark-kitchen-ai skill install
 ```
 
-Install it in the local Codex skill directory:
+Install it in the local OpenCode skill directory:
 
 ```bash
 npx dark-kitchen-ai skill install --global
@@ -162,7 +167,7 @@ With all five issues marked `dark-kitchen:auto`, #1 and #2 start first, #3 start
 
 ## Configuration
 
-`init` generates a small, committed configuration at `.factory/config.json`. Runtime state under `.factory/runtime/` is ignored by Git. For each issue, Dark Kitchen AI writes the exact workflow input to `.factory/runtime/<issue>/input.json` and the worker writes its structured result to `result.json`; the Orca command passes only a reference to that input file, never the issue body itself.
+`init` generates a small, committed supervisor configuration at `.factory/config.json` and an Open Dynamic Workflow project under `.open-dynamic-workflow/`. Runtime state under `.factory/runtime/` and `.open-dynamic-workflow/runs/` is ignored by Git. For each issue, Dark Kitchen AI writes the exact workflow input to `.factory/runtime/<issue>/input.json` and the worker writes its structured result to `result.json`; the Orca command passes only a reference to that input file, never the issue body itself.
 
 Example:
 
@@ -173,10 +178,10 @@ Example:
   "pollIntervalSeconds": 15,
   "autoMerge": true,
   "baseBranch": "main",
-  "workflowCommand": "codex-workflow",
+  "workflowCommand": "open-dynamic-workflow",
   "orca": { "command": "orca-ide", "args": [] },
-  "workflowFile": ".factory/workflows/issue.ts",
-  "workflowConfig": ".factory/codex-workflow.config.ts",
+  "workflowFile": ".open-dynamic-workflow/workflows/issue.workflow.ts",
+  "workflowConfig": ".open-dynamic-workflow/config.yaml",
   "checkTimeoutSeconds": 1800,
   "roles": {
     "designer": {
@@ -219,17 +224,17 @@ Example:
     }
   },
   "providers": {
-    "architect": { "backend": "codex", "model": "YOUR_CURRENT_CODEX_MODEL", "reasoning": "high" },
-    "implementer": { "backend": "codex", "model": "YOUR_CURRENT_CODEX_MODEL", "reasoning": "medium" },
-    "reviewer": { "backend": "codex", "model": "YOUR_CURRENT_CODEX_MODEL", "reasoning": "high" },
-    "fixer": { "backend": "codex", "model": "YOUR_CURRENT_STRONG_FIXER_MODEL", "reasoning": "high" }
+    "architect": { "backend": "opencode", "model": "YOUR_OPENCODE_PROVIDER/MODEL", "reasoning": "high" },
+    "implementer": { "backend": "opencode", "model": "YOUR_OPENCODE_PROVIDER/MODEL", "reasoning": "medium" },
+    "reviewer": { "backend": "opencode", "model": "YOUR_OPENCODE_PROVIDER/MODEL", "reasoning": "high" },
+    "fixer": { "backend": "opencode", "model": "YOUR_OPENCODE_PROVIDER/MODEL", "reasoning": "high" }
   }
 }
 ```
 
-`roles` defines precise subagents. Each role can choose a provider, override its model, add a role directive, and load project-local skills. `workflows` chooses which roles participate and assigns semantic slots such as planning, implementation, review, and fixing.
+`roles` defines precise workflow roles. Each role can select a model, add a role directive, and load project-local skills. Open Dynamic Workflow runs every role through the OpenCode provider; `workflows` chooses which roles participate and assigns semantic slots such as planning, implementation, review, and fixing.
 
-Existing V1 and V2 `.factory/config.json` files are migrated automatically to V3 when loaded; their provider routing and Orca configuration are preserved.
+Existing V1 and V2 `.factory/config.json` files are migrated automatically to V3 when loaded; their role routing and Orca configuration are preserved, while former Codex providers are converted to OpenCode models.
 
 The PM selects a specialized profile in the issue body:
 
@@ -240,31 +245,29 @@ profile: design
 
 Without that block, the `default` profile is used. Unknown profiles become a human blocker instead of silently falling back. Keep provider names, model IDs, skill names, and MCP names in the committed project configuration; never put credentials, URLs, or shell commands in an issue.
 
-Skills are loaded from project-local locations in this order: `.factory/skills/<name>/SKILL.md`, `skills/<name>/SKILL.md`, `.agents/skills/<name>/SKILL.md`, and `.codex/skills/<name>/SKILL.md`. Dark Kitchen validates skill names and reports missing skills as `needs_human`.
+Skills are loaded from project-local locations in this order: `.factory/skills/<name>/SKILL.md`, `skills/<name>/SKILL.md`, `.opencode/skills/<name>/SKILL.md`, `.agents/skills/<name>/SKILL.md`, and `.codex/skills/<name>/SKILL.md`. Dark Kitchen validates skill names and reports missing skills as `needs_human`.
 
-The generated `.factory/codex-workflow.config.ts` adapts this JSON to the current workflow runtime. Edit `.factory/config.json`, not supervisor code, when changing role routing. `status` prints the active role routing and `doctor` checks only the backends and environment variables actually referenced by configured roles.
+The generated `.open-dynamic-workflow/config.yaml` configures the runtime and its OpenCode provider. Edit `.factory/config.json`, not supervisor code, when changing role routing or model selection. `status` prints the active role routing and `doctor` checks the Open Dynamic Workflow and OpenCode CLIs.
 
-Example Pi provider shape:
+Example OpenCode provider shape:
 
 ```json
 {
   "implementer": {
-    "backend": "pi",
-    "baseUrl": "https://api.example.invalid",
-    "api": "openai-completions",
-    "model": "YOUR_PROVIDER_MODEL_ID",
-    "apiKeyEnv": "YOUR_PROVIDER_API_KEY"
+    "backend": "opencode",
+    "model": "openai/YOUR_MODEL_ID",
+    "reasoning": "medium"
   }
 }
 ```
 
-Use the exact keys, endpoint, model ID, and environment variable required by your installed Pi/provider version. Never commit API keys. Codex providers generated for the validated Orca Linux environment use `danger-full-access` by default because that environment did not support the required sandbox mapping; if your machine supports it, set `"sandbox": "workspace-write"` in the provider entry and verify the result with `doctor`.
+Use the exact model ID and credentials required by your installed OpenCode provider. Never commit API keys. Workflow agent calls use Open Dynamic Workflow's explicit `dangerously-full-access` mode because they must modify the isolated Orca worktree; the worktree remains the safety boundary.
 
-The `mcp` field is an allowlist and role hint. The current codex-dynamic-workflows runtime does not register arbitrary MCP servers per subagent, so a role must only rely on MCP tools that are already exposed by its backend session. Dark Kitchen deliberately does not pretend that listing an MCP name creates a connection.
+The `mcp` field is an allowlist and role hint. A role must only rely on MCP tools that are already exposed by its OpenCode session; Dark Kitchen deliberately does not pretend that listing an MCP name creates a connection.
 
 ## Workflow and worker results
 
-The generated `.factory/workflows/issue.ts` is a reusable role-based orchestrator. It resolves the issue's workflow profile, loads the selected role prompts and skills, optionally runs a designer/architect, implements, independently reviews, and bounds fix/review loops to avoid recursive agent explosions. The workflow file stays the same; the selected profile and issue context change its execution.
+The generated `.open-dynamic-workflow/workflows/issue.workflow.ts` is a reusable role-based orchestrator. It resolves the issue's workflow profile, loads the selected role prompts and skills through trusted local tools, optionally runs a designer/architect, implements, independently reviews, and bounds fix/review loops to avoid recursive agent explosions. The workflow file stays the same; the selected profile and issue context change its execution.
 
 The final result is validated against `.factory/result.schema.json`:
 
@@ -339,7 +342,7 @@ The package is configured with public npm access and exposes both `dark-kitchen-
 - The supervisor runs in the foreground; use launchd/systemd later if you want a daemon.
 - Recovery after a machine crash is intentionally conservative and keeps worktrees for inspection.
 - `autoMerge: false` opens and checks PRs but leaves the final merge to a human; the hands-off path is the default V0 demo.
-- Direct Claude, Gemini CLI, OpenCode, or remote execution harnesses are not implemented as separate workflow runners. Gemini and Pi are supported only through the current codex-dynamic-workflows routing model.
+- Direct Claude, Gemini CLI, or remote execution harnesses are not implemented as separate workflow runners. OpenCode is the supported worker provider through Open Dynamic Workflow.
 - There is no hosted dashboard, database, MCP server, or second dependency graph.
 
 ## Contributing
@@ -358,5 +361,6 @@ Dark Kitchen AI shells out to the installed tools instead of pretending their CL
 
 - [Orca CLI](https://github.com/stablyai/orca/blob/main/skill-guides/orca-cli.md)
 - [Orca orchestration skill](https://github.com/stablyai/orca/blob/main/skills/orchestration/SKILL.md)
-- [codex-dynamic-workflows](https://github.com/six-ddc/codex-dynamic-workflows)
+- [Open Dynamic Workflow](https://github.com/travisliu/open-dynamic-workflow)
+- [OpenCode](https://opencode.ai/)
 - [GitHub issue dependencies API](https://docs.github.com/en/rest/issues/issue-dependencies)

@@ -10,4 +10,4 @@
 
 ## Compatibility / safety notes
 
-<!-- Mention GitHub CLI, Orca, codex-workflow, provider, or migration behavior when relevant. -->
+<!-- Mention GitHub CLI, Orca, OpenCode, Open Dynamic Workflow, provider, or migration behavior when relevant. -->

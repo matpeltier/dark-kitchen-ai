@@ -13,7 +13,7 @@ import { bundledSkillPath, installSkill } from "./skill.js";
 import type { FactoryConfig } from "./types.js";
 
 const program = new Command();
-program.name("dark-kitchen-ai").alias("dka").description("Keep a GitHub issue dependency graph moving through Orca and codex-dynamic-workflows").version("0.3.0");
+program.name("dark-kitchen-ai").alias("dka").description("Keep a GitHub issue dependency graph moving through Orca and Open Dynamic Workflow").version("0.3.1");
 
 program.command("create")
   .argument("<name>", "directory and GitHub repository name")
@@ -111,13 +111,13 @@ program.command("retry")
     await supervisor.retry(issueNumber);
   });
 
-const skill = program.command("skill").description("Install the Dark Kitchen Issues skill for ChatGPT/Codex planning");
+const skill = program.command("skill").description("Install the Dark Kitchen Issues skill for OpenCode planning");
 skill.command("path")
   .description("Print the bundled skill directory")
   .action(() => console.log(bundledSkillPath()));
 skill.command("install")
   .argument("[destination]", "destination directory (default: ./skills/dark-kitchen-issues)")
-  .option("--global", "install into ~/.codex/skills/dark-kitchen-issues")
+  .option("--global", "install into ~/.config/opencode/skills/dark-kitchen-issues")
   .option("--force", "replace an existing destination")
   .action(async (destination: string | undefined, options: { global?: boolean; force?: boolean }) => {
     const target = await installSkill(destination, options);

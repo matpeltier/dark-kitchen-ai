@@ -1,4 +1,5 @@
 node_modules/
 dist/
 .factory/runtime/
+.open-dynamic-workflow/runs/
 *.log

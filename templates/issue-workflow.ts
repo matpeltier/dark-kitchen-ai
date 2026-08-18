@@ -1,17 +1,13 @@
 export const meta = {
   name: "dark-kitchen-issue",
   description: "Run a configurable role-based workflow for one GitHub issue.",
-  whenToUse: "For a Dark Kitchen AI-managed GitHub issue.",
   phases: [
-    { title: "Architecture / design" },
-    { title: "Implementation" },
-    { title: "Independent review" },
-    { title: "Fix and reverify" },
+    "Architecture / design",
+    "Implementation",
+    "Independent review",
+    "Fix and reverify",
   ],
 };
-
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import path from "node:path";
 
 type RoleConfig = {
   provider: string;
@@ -32,10 +28,18 @@ type WorkflowProfile = {
   fixRole?: string;
 };
 
-const configPath = process.env.FACTORY_CONFIG_PATH ?? path.join(process.cwd(), ".factory", "config.json");
-const factoryConfig = JSON.parse(await readFile(configPath, "utf8")) as {
+type FactoryConfig = {
   roles: Record<string, RoleConfig>;
   workflows: Record<string, WorkflowProfile>;
+  providers: Record<string, { model: string; reasoning?: string; thinking?: string }>;
+};
+
+type IssueInput = {
+  number: number;
+  title: string;
+  body: string;
+  labels: string[];
+  resultPath?: string;
 };
 
 const HUMAN_CATEGORIES = [
@@ -45,44 +49,54 @@ const HUMAN_CATEGORIES = [
   "destructive_action",
 ];
 
-// codex-dynamic-workflows injects agent(), phase(), and args into this script.
-const issue = args as {
-  number: number;
-  title: string;
-  body: string;
-  labels: string[];
-  resultPath?: string;
-};
-
 const IMPLEMENTATION_SCHEMA = {
-  type: "object", additionalProperties: false,
+  type: "object",
+  additionalProperties: false,
   properties: {
     status: { type: "string", enum: ["success", "needs_human"] },
-    summary: { type: "string" }, question: { type: "string" },
-    category: { type: "string", enum: HUMAN_CATEGORIES }, recommendation: { type: "string" },
+    summary: { type: "string" },
+    question: { type: "string" },
+    category: { type: "string", enum: HUMAN_CATEGORIES },
+    recommendation: { type: "string" },
     tests: { type: "array", items: { type: "string" } },
   },
   required: ["status", "summary", "tests"],
 };
 
 const REVIEW_SCHEMA = {
-  type: "object", additionalProperties: false,
+  type: "object",
+  additionalProperties: false,
   properties: {
-    hasBlockingFindings: { type: "boolean" }, summary: { type: "string" },
+    hasBlockingFindings: { type: "boolean" },
+    summary: { type: "string" },
     findings: { type: "array", items: { type: "string" } },
   },
   required: ["hasBlockingFindings", "summary", "findings"],
 };
 
 const FIX_SCHEMA = {
-  type: "object", additionalProperties: false,
+  type: "object",
+  additionalProperties: false,
   properties: {
     status: { type: "string", enum: ["fixed", "needs_human"] },
-    summary: { type: "string" }, question: { type: "string" },
-    category: { type: "string", enum: HUMAN_CATEGORIES }, recommendation: { type: "string" },
+    summary: { type: "string" },
+    question: { type: "string" },
+    category: { type: "string", enum: HUMAN_CATEGORIES },
+    recommendation: { type: "string" },
   },
   required: ["status", "summary"],
 };
+
+const runtimeArgs = args as { inputPath: string; configPath: string };
+const issue = await tool({ definition: "read-json", args: { path: runtimeArgs.inputPath } }) as IssueInput;
+const factoryConfig = await tool({ definition: "read-json", args: { path: runtimeArgs.configPath } }) as FactoryConfig;
+const skillContents = new Map<string, string | null>();
+for (const role of Object.values(factoryConfig.roles)) {
+  for (const skill of role.skills ?? []) {
+    if (skillContents.has(skill)) continue;
+    skillContents.set(skill, await tool({ definition: "read-skill", args: { name: skill } }) as string | null);
+  }
+}
 
 function issueProfileName(): string {
   const section = issue.body.match(/(?:^|\n)##\s*Dark Kitchen workflow\s*\n([\s\S]*?)(?=\n##\s|$)/i)?.[1] ?? "";
@@ -97,30 +111,24 @@ function roleFor(profile: WorkflowProfile, roleName: string | undefined): { name
   return { name: roleName, config };
 }
 
-async function roleInstructions(role: { name: string; config: RoleConfig }): Promise<string> {
+function providerFor(role: { name: string; config: RoleConfig }): { model?: string; thinkingEffort?: "off" | "minimal" | "low" | "medium" | "high" | "xhigh" } {
+  const provider = factoryConfig.providers[role.config.provider];
+  const thinking = provider?.reasoning ?? provider?.thinking;
+  const thinkingEffort = ["off", "minimal", "low", "medium", "high", "xhigh"].includes(thinking || "")
+    ? thinking as "off" | "minimal" | "low" | "medium" | "high" | "xhigh"
+    : undefined;
+  return {
+    ...(role.config.model || provider?.model ? { model: role.config.model ?? provider?.model } : {}),
+    ...(thinkingEffort ? { thinkingEffort } : {}),
+  };
+}
+
+function roleInstructions(role: { name: string; config: RoleConfig }): string {
   const sections: string[] = [];
   if (role.config.prompt) sections.push(`Role instructions for ${role.name}:\n${role.config.prompt}`);
   const missingSkills: string[] = [];
   for (const skill of role.config.skills ?? []) {
-    if (!/^[a-z0-9][a-z0-9._-]*$/i.test(skill) || skill.includes("..")) {
-      missingSkills.push(`${skill} (unsafe skill name)`);
-      continue;
-    }
-    const candidates = [
-      path.join(process.cwd(), ".factory", "skills", skill, "SKILL.md"),
-      path.join(process.cwd(), "skills", skill, "SKILL.md"),
-      path.join(process.cwd(), ".agents", "skills", skill, "SKILL.md"),
-      path.join(process.cwd(), ".codex", "skills", skill, "SKILL.md"),
-    ];
-    let content: string | undefined;
-    for (const candidate of candidates) {
-      try {
-        content = await readFile(candidate, "utf8");
-        break;
-      } catch {
-        // Try the next project-local skill directory.
-      }
-    }
+    const content = skillContents.get(skill);
     if (!content) missingSkills.push(skill);
     else sections.push(`Skill ${skill}:\n${content.slice(0, 20000)}`);
   }
@@ -136,31 +144,27 @@ async function runRole(
   prompt: string,
   phaseName: string,
   schema: unknown,
+  iteration = 1,
 ): Promise<any> {
-  const instructions = await roleInstructions(role);
-  return agent(
-    `${instructions}\n\n${prompt}`,
-    {
-      label: role.name,
-      phase: phaseName,
-      provider: role.config.provider,
-      ...(role.config.model ? { model: role.config.model } : {}),
-      ...(role.config.agentType ? { agentType: role.config.agentType } : {}),
-      schema,
-    },
-  );
+  const instructions = roleInstructions(role);
+  const result = await agent({
+    id: `${role.name}-${phaseName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${iteration}`,
+    label: role.name,
+    phase: phaseName,
+    provider: "opencode",
+    ...providerFor(role),
+    ...(role.config.agentType ? { metadata: { opencodeAgent: role.config.agentType } } : {}),
+    permissions: { mode: "dangerously-full-access" },
+    schema,
+    prompt: `${instructions}\n\n${prompt}`,
+  });
+  if (!result.ok || result.status !== "succeeded") return undefined;
+  return result.json;
 }
 
 function warrantsArchitecture(): boolean {
   return /architecture|design|schema|migration|refactor|integration|api|database/i.test(`${issue.title}\n${issue.body}`)
     || issue.body.length > 900;
-}
-
-async function save(result: unknown): Promise<unknown> {
-  const resultPath = issue.resultPath ?? path.join(process.cwd(), ".factory", "runtime", String(issue.number), "result.json");
-  await mkdir(path.dirname(resultPath), { recursive: true });
-  await writeFile(resultPath, JSON.stringify(result, null, 2) + "\n", "utf8");
-  return result;
 }
 
 let finalResult: any;
@@ -191,7 +195,7 @@ try {
       phase("Architecture / design");
       const plan = await runRole(
         planRole,
-        `Read AGENTS.md and issue #${issue.number}: ${issue.title}\n\n${issue.body}\n\nPlan the smallest implementation that satisfies the stated acceptance criteria. Do not invent product requirements. Return needs_human only for a materially ambiguous or impossible requirement, missing access, or an action requiring explicit destructive approval.`,
+        `Read AGENTS.md and the complete issue input JSON at ${runtimeArgs.inputPath}. The issue is #${issue.number}: ${issue.title}. Plan the smallest implementation that satisfies the stated acceptance criteria. Do not invent product requirements. Return needs_human only for a materially ambiguous or impossible requirement, missing access, or an action requiring explicit destructive approval.`,
         "Architecture / design",
         IMPLEMENTATION_SCHEMA,
       );
@@ -208,7 +212,7 @@ try {
       phase("Implementation");
       const implementation = await runRole(
         implementationRole,
-        `You are the implementation owner for GitHub issue #${issue.number}: ${issue.title}.\n\nOriginal issue and acceptance criteria:\n${issue.body}\n\nArchitecture/design context:\n${architecture}\n\nRead AGENTS.md and inspect the repository. Implement only this issue. Run relevant tests, lint, and typecheck where configured. Do not change product requirements, launch other issues, or ask about routine coding/debugging choices. Before reporting success, inspect the final diff and commit meaningful changes on the current branch. Return needs_human only when a product decision, missing access/credential, impossible requirement, or explicit destructive approval is genuinely required. Tests, build failures, review findings, crashes, timeouts, and difficult debugging are engineering failures and must remain failed so the supervisor can retry.`,
+        `You are the implementation owner for GitHub issue #${issue.number}: ${issue.title}. Read the complete issue input JSON at ${runtimeArgs.inputPath} for the original issue and acceptance criteria.\n\nArchitecture/design context:\n${architecture}\n\nRead AGENTS.md and inspect the repository. Implement only this issue. Run relevant tests, lint, and typecheck where configured. Do not change product requirements, launch other issues, or ask about routine coding/debugging choices. Before reporting success, inspect the final diff and commit meaningful changes on the current branch. Return needs_human only when a product decision, missing access/credential, impossible requirement, or explicit destructive approval is genuinely required. Tests, build failures, review findings, crashes, timeouts, and difficult debugging are engineering failures and must remain failed so the supervisor can retry.`,
         "Implementation",
         IMPLEMENTATION_SCHEMA,
       );
@@ -225,9 +229,10 @@ try {
           phase("Independent review");
           const review = await runRole(
             reviewRole,
-            `Independently review issue #${issue.number} and the current preserved worktree. Read the original issue and acceptance criteria, AGENTS.md, git diff, committed changes, and test results. Check every acceptance criterion, correctness, regressions, and missing tests. Do not rewrite code in this review session. Return only actionable blocking findings. Review the current implementation independently from the implementer and fixer sessions.`,
+            `Independently review issue #${issue.number} and the current preserved worktree. Read the complete issue input JSON at ${runtimeArgs.inputPath} and read AGENTS.md, git diff, committed changes, and test results. Check every acceptance criterion, correctness, regressions, and missing tests. Do not rewrite code in this review session. Return only actionable blocking findings. Review the current implementation independently from the implementer and fixer sessions.`,
             "Independent review",
             REVIEW_SCHEMA,
+            reviewPass + 1,
           );
           if (!review) {
             finalResult = { status: "failed", summary: "The review role returned no structured result.", attempts: ["Review role returned null after retries."] };
@@ -249,9 +254,10 @@ try {
           phase("Fix and reverify");
           const fixed = await runRole(
             fixRole,
-            `You are the fixer for issue #${issue.number}. Continue in the existing preserved task worktree; do not restart the implementation from scratch.\n\nOriginal issue and acceptance criteria:\n${issue.body}\n\nCurrent implementation and reviewer findings:\n- ${review.findings.join("\n- ")}\n\nResolve every blocking finding at its root cause, not merely the reported line. Inspect the surrounding subsystem for the same class of defect, verify that the fix preserves every acceptance criterion, rerun relevant tests/typecheck/lint/build, inspect the final diff adversarially, and commit the resulting changes. Do not ask for human input for routine engineering or debugging decisions. Return needs_human only for a genuine product decision, missing access/credential, impossible requirement, or explicit destructive approval.`,
+            `You are the fixer for issue #${issue.number}. Read the complete issue input JSON at ${runtimeArgs.inputPath}. Continue in the existing preserved task worktree; do not restart the implementation from scratch.\n\nCurrent implementation and reviewer findings:\n- ${review.findings.join("\n- ")}\n\nResolve every blocking finding at its root cause, not merely the reported line. Inspect the surrounding subsystem for the same class of defect, verify that the fix preserves every acceptance criterion, rerun relevant tests/typecheck/lint/build, inspect the final diff adversarially, and commit the resulting changes. Do not ask for human input for routine engineering or debugging decisions. Return needs_human only for a genuine product decision, missing access/credential, impossible requirement, or explicit destructive approval.`,
             "Fix and reverify",
             FIX_SCHEMA,
+            reviewPass + 1,
           );
           if (!fixed) {
             finalResult = { status: "failed", summary: "The fix role returned no structured result.", attempts: ["Fix role returned null after retries."] };
@@ -275,5 +281,6 @@ try {
     : { status: "failed", summary: message, attempts: ["Workflow orchestration or an agent call failed."] };
 }
 
-await save(finalResult);
-finalResult;
+if (!issue.resultPath) throw new Error("Workflow input is missing resultPath");
+await tool({ definition: "write-json", args: { path: issue.resultPath, value: finalResult } });
+export default finalResult;
